@@ -910,18 +910,17 @@ function resetSliders(solId){
   if(sol){const sugs=_gerarESalvar(sol);_renderTabela(solId,sol,sugs);}
 }
 
-function aprovarTabela(solId){
+async function aprovarTabela(solId){
   const sol=(window._sols||[]).find(s=>s.id===solId);
   if(!sol)return;
-  // Monta sugestões com ajustes dos sliders aplicados
   const sugsBase=Object.values(_sugsCached);
   const sugsFinais=sugsBase.map(s=>{
     const pct=_ajustesAtivos[s.praca]||0;
     const adj=aplicarAjuste(s,pct);
-    return{...s,sug:{...s.sug,...adj}};
+    return{...s,_pct:pct,sug:{...s.sug,...adj}};
   });
   showToast('⏳ Gerando tabela Excel...');
-  gerarExcel(sol,sugsFinais);
+  await gerarExcel(sol,sugsFinais);
   tabelasAprovadas[solId]=true;
   showToast('✅ Tabela aprovada e Excel gerado!');
   _renderTabela(solId,sol,Object.values(_sugsCached));
@@ -961,77 +960,135 @@ const PRACA_LINHA={
 };
 
 function _faixas(exc){
-  const t=exc/1000, f5=t*30, f10=f5*1.35;
+  const t=exc/1000,f5=t*30,f10=f5*1.35;
   return[f5,f10,f10+t*10,f10+t*20,f10+t*40,f10+t*60,f10+t*90];
 }
 
-function gerarExcel(sol, sugs){
-  try{
-    const bin=atob(TEMPLATE_B64);
-    const arr=new Uint8Array(bin.length);
-    for(let i=0;i<bin.length;i++) arr[i]=bin.charCodeAt(i);
+// Substitui valor de uma célula no XML do sheet preservando o estilo (atributo s)
+function _setCelula(xml, addr, val){
+  // Escapa caracteres especiais para XML
+  const esc=v=>String(v)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&apos;');
 
-    const wb=XLSX.read(arr,{type:'array',cellStyles:true,bookVBA:false});
-    const ws=wb.Sheets['GERENCIAL'];
-    if(!ws){showToast('Aba GERENCIAL não encontrada');return false;}
+  const isNum = typeof val === 'number';
+
+  // Regex que captura a célula com qualquer conteúdo atual
+  const re = new RegExp('<c r="' + addr + '"(\\s[^>]*)?>.*?</c>', 's');
+  const reEmpty = new RegExp('<c r="' + addr + '"([^/]*)/>');
+
+  if(isNum){
+    // Célula numérica: <c r="ADDR" s="N" t="n"><v>VAL</v></c>
+    xml = xml.replace(re, (m, attrs) => {
+      const s = (attrs||'').match(/s="(\d+)"/);
+      const sAttr = s ? ` s="${s[1]}"` : '';
+      return `<c r="${addr}"${sAttr}><v>${val}</v></c>`;
+    });
+    xml = xml.replace(reEmpty, (m, attrs) => {
+      const s = (attrs||'').match(/s="(\d+)"/);
+      const sAttr = s ? ` s="${s[1]}"` : '';
+      return `<c r="${addr}"${sAttr}><v>${val}</v></c>`;
+    });
+  } else {
+    // Célula string inline: <c r="ADDR" s="N" t="inlineStr"><is><t>VAL</t></is></c>
+    xml = xml.replace(re, (m, attrs) => {
+      const s = (attrs||'').match(/s="(\d+)"/);
+      const sAttr = s ? ` s="${s[1]}"` : '';
+      return `<c r="${addr}"${sAttr} t="inlineStr"><is><t>${esc(val)}</t></is></c>`;
+    });
+    xml = xml.replace(reEmpty, (m, attrs) => {
+      const s = (attrs||'').match(/s="(\d+)"/);
+      const sAttr = s ? ` s="${s[1]}"` : '';
+      return `<c r="${addr}"${sAttr} t="inlineStr"><is><t>${esc(val)}</t></is></c>`;
+    });
+  }
+  return xml;
+}
+
+async function gerarExcel(sol, sugs){
+  try{
+    // Carrega JSZip dinamicamente se não estiver disponível
+    if(typeof JSZip==='undefined'){
+      await new Promise((res,rej)=>{
+        const s=document.createElement('script');
+        s.src='https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
+        s.onload=res; s.onerror=rej;
+        document.head.appendChild(s);
+      });
+    }
+
+    // Decodifica template ZIP
+    const binStr=atob(TEMPLATE_B64);
+    const binArr=new Uint8Array(binStr.length);
+    for(let i=0;i<binStr.length;i++) binArr[i]=binStr.charCodeAt(i);
+
+    // Abre ZIP preservando TODOS os arquivos (incluindo logo)
+    const zip=await JSZip.loadAsync(binArr);
+    let xml=await zip.file('xl/worksheets/sheet1.xml').async('string');
 
     const c=sol.cli;
-
-    // DATA: "CIDADE - DD de Mês de AAAA"
+    const meses=['Janeiro','Fevereiro','Março','Abril','Maio','Junho',
+                 'Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
     const dataAprov=(()=>{
       const src=sol.atualEm||sol.criadoEm||'';
-      const meses=['Janeiro','Fevereiro','Março','Abril','Maio','Junho',
-                   'Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
       const partes=src.split('/');
-      let dataFmt='';
       if(partes.length>=3){
         const dia=partes[0].trim().split(' ').pop();
         const mes=parseInt(partes[1].trim());
         const ano=partes[2].trim().split(',')[0].split(' ')[0];
-        dataFmt=dia+' de '+(meses[mes-1]||mes)+' de '+ano;
+        const cidade=(c.cu||'').split('-')[0].trim().toUpperCase()||'CLIENTE';
+        return cidade+' - '+dia+' de '+(meses[mes-1]||mes)+' de '+ano;
       }
-      if(!dataFmt) dataFmt=new Date().toLocaleDateString('pt-BR');
-      const cidade=(c.cu||'').split('-')[0].trim().toUpperCase()||'CLIENTE';
-      return cidade+' - '+dataFmt;
+      return(c.cu||'CLIENTE').toUpperCase()+' - '+new Date().toLocaleDateString('pt-BR');
     })();
 
-    const set=(addr,val)=>{
-      const t=typeof val==='number'?'n':'s';
-      if(!ws[addr]) ws[addr]={t,v:val};
-      else{ ws[addr].t=t; ws[addr].v=val; delete ws[addr].f; delete ws[addr].w; }
-    };
+    // Preenche dados do cliente
+    xml=_setCelula(xml,'D9', c.razao||'');
+    xml=_setCelula(xml,'D10',c.cnpj||'');
+    xml=_setCelula(xml,'N10',c.ie||'');
+    xml=_setCelula(xml,'D11',c.end||'');
+    xml=_setCelula(xml,'D12',c.bairro||'');
+    xml=_setCelula(xml,'K12',c.cu||'');
+    xml=_setCelula(xml,'N12',c.cep||'');
+    xml=_setCelula(xml,'D13',c.ct||'');
+    xml=_setCelula(xml,'K13',c.tel||'');
+    xml=_setCelula(xml,'D14',c.email||'');
+    xml=_setCelula(xml,'L14',c.ecob||'');
+    xml=_setCelula(xml,'D15',c.carga||'');
+    xml=_setCelula(xml,'L15',sol.nV||'');
+    xml=_setCelula(xml,'M2', dataAprov);
+    xml=_setCelula(xml,'I1', '');
 
-    // Dados do cliente
-    set('D9', c.razao||''); set('D10',c.cnpj||''); set('N10',c.ie||'');
-    set('D11',c.end||'');   set('D12',c.bairro||'');
-    set('K12',c.cu||'');    set('N12',c.cep||'');
-    set('D13',c.ct||'');    set('K13',c.tel||'');
-    set('D14',c.email||''); set('L14',c.ecob||'');
-    set('D15',c.carga||''); set('L15',sol.nV||'');
-    set('M2', dataAprov);   set('I1','');
-
-    // ── CORREÇÃO PRINCIPAL: só sobrescreve praças onde slider foi movido (pct != 0)
+    // Sobrescreve apenas praças com slider ajustado (_pct != 0)
     for(const sug of sugs){
-      const pct=_ajustesAtivos[sug.praca]||0;
-      if(pct===0) continue; // slider em 0 = mantém valor padrão do template
-
+      if(!sug._pct||sug._pct===0) continue;
       const linha=PRACA_LINHA[sug.praca];
       if(!linha) continue;
-
-      const adj=aplicarAjuste(sug,pct);
-      const exc=adj.exc;
+      const exc=sug.sug.exc;
       const r=String(linha);
       const n4=v=>Math.round(v*10000)/10000;
       const [f5,f10,f20,f30,f50,f70,f100]=_faixas(exc);
-
-      set('F'+r,n4(f5)); set('G'+r,n4(f10)); set('H'+r,n4(f20));
-      set('I'+r,n4(f30)); set('J'+r,n4(f50)); set('K'+r,n4(f70));
-      set('L'+r,n4(f100)); set('M'+r,n4(exc));
-      set('N'+r,n4(adj.fv)); set('O'+r,n4(adj.gr)); set('P'+r,n4(adj.d));
+      xml=_setCelula(xml,'F'+r,n4(f5)); xml=_setCelula(xml,'G'+r,n4(f10));
+      xml=_setCelula(xml,'H'+r,n4(f20)); xml=_setCelula(xml,'I'+r,n4(f30));
+      xml=_setCelula(xml,'J'+r,n4(f50)); xml=_setCelula(xml,'K'+r,n4(f70));
+      xml=_setCelula(xml,'L'+r,n4(f100)); xml=_setCelula(xml,'M'+r,n4(exc));
+      xml=_setCelula(xml,'N'+r,n4(sug.sug.fv));
+      xml=_setCelula(xml,'O'+r,n4(sug.sug.gr));
+      xml=_setCelula(xml,'P'+r,n4(sug.sug.d));
     }
 
+    // Salva XML modificado de volta no ZIP (logo e outros arquivos intactos)
+    zip.file('xl/worksheets/sheet1.xml', xml);
+
+    // Gera e baixa o arquivo
+    const blob=await zip.generateAsync({type:'blob',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',compression:'DEFLATE'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    a.href=url;
     const nome=(c.razao||'tabela').replace(/[^a-zA-Z0-9]/g,'_').slice(0,30);
-    XLSX.writeFile(wb,'Tabela_'+nome+'_'+new Date().toISOString().slice(0,10)+'.xlsx');
+    a.download='Tabela_'+nome+'_'+new Date().toISOString().slice(0,10)+'.xlsx';
+    a.click();
+    URL.revokeObjectURL(url);
     return true;
   }catch(e){
     console.error('Erro gerarExcel:',e);
@@ -1040,7 +1097,7 @@ function gerarExcel(sol, sugs){
   }
 }
 
-function baixarTabela(solId){
+async function baixarTabela(solId){
   const sol=(window._sols||[]).find(s=>s.id===solId);
   if(!sol)return;
   // Usa sugestões com sliders se disponíveis, senão recalcula
@@ -1049,12 +1106,12 @@ function baixarTabela(solId){
     sugs=Object.values(_sugsCached).map(s=>{
       const pct=_ajustesAtivos[s.praca]||0;
       const adj=aplicarAjuste(s,pct);
-      return{...s,sug:{...s.sug,...adj}};
+      return{...s,_pct:pct,sug:{...s.sug,...adj}};
     });
   } else {
     sugs=gerarSugestoes(sol);
   }
-  const ok=gerarExcel(sol,sugs);
+  const ok=await gerarExcel(sol,sugs);
   if(ok) showToast('✅ Tabela baixada com sucesso!');
 }
 
