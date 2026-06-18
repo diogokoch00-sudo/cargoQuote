@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
 <title>Gestão Comercial - Diogo Koch</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500&display=swap');
 :root{--navy:#0F2240;--blue:#1B4F8A;--accent:#FF6B35;--light:#F0F4FA;--border:#D8E2F0;--text:#1A2332;--muted:#6B7A99;--green:#00875A;--red:#D93025;--purple:#7C3AED;--amber:#D97706;}
@@ -153,6 +154,16 @@ input[type=range].adj-slider{flex:1;min-width:100px;accent-color:var(--blue);cur
 .pond-val{font-size:20px;font-weight:800;color:#fff;margin-top:2px;}
 .pond-val.green{color:#6EE7B7;}.pond-val.red{color:#FCA5A5;}.pond-val.yellow{color:#FDE68A;}
 .pond-sep{width:1px;background:rgba(255,255,255,.15);align-self:stretch;margin:0 4px;}
+.google-btn{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;padding:11px;border:1.5px solid #dadce0;border-radius:8px;background:#fff;cursor:pointer;font-size:14px;font-weight:500;color:#3c4043;font-family:'Inter',sans-serif;transition:all .2s;margin-top:8px;}
+.google-btn:hover{background:#f8f9fa;box-shadow:0 1px 6px rgba(0,0,0,.12);}
+.google-btn svg{flex-shrink:0;}
+.divider{display:flex;align-items:center;gap:10px;margin:14px 0;color:var(--muted);font-size:12px;}
+.divider::before,.divider::after{content:'';flex:1;height:1px;background:var(--border);}
+.aguard-box{text-align:center;padding:40px 20px;}
+.aguard-icon{font-size:52px;margin-bottom:16px;}
+.aguard-title{font-size:18px;font-weight:800;color:var(--navy);margin-bottom:8px;}
+.aguard-sub{font-size:13px;color:var(--muted);margin-bottom:20px;}
+.pendente-badge{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;background:#FEF3C7;color:#92400E;}
 </style>
 </head>
 <body>
@@ -194,6 +205,11 @@ input[type=range].adj-slider{flex:1;min-width:100px;accent-color:var(--blue);cur
       <div class="login-tab" onclick="switchTab('senha',this)">Alterar senha</div>
     </div>
     <div id="lt-entrar">
+      <button class="google-btn" onclick="loginGoogle()">
+        <svg width="20" height="20" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.18 1.48-4.97 2.36-8.16 2.36-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/><path fill="none" d="M0 0h48v48H0z"/></svg>
+        Entrar com Google
+      </button>
+      <div class="divider">ou</div>
       <div class="field"><label>E-mail</label><input id="l_email" type="email" placeholder="seu@email.com" onkeydown="if(event.key==='Enter')login()"/></div>
       <div class="field"><label>Senha</label><input id="l_senha" type="password" placeholder="••••••••" onkeydown="if(event.key==='Enter')login()"/></div>
       <div id="login-err" class="alert alert-err" style="display:none"></div>
@@ -217,6 +233,19 @@ input[type=range].adj-slider{flex:1;min-width:100px;accent-color:var(--blue);cur
       <div id="senha-err" class="alert alert-err" style="display:none"></div>
       <div id="senha-ok" class="alert alert-ok" style="display:none"></div>
       <button class="btn btn-primary" style="width:100%;justify-content:center;padding:12px" onclick="alterarSenha()">Alterar senha</button>
+    </div>
+  </div>
+</div>
+
+<!-- AGUARDANDO APROVAÇÃO ADM -->
+<div id="view-aguardando" style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,var(--navy) 0%,var(--blue) 100%);">
+  <div class="login-box">
+    <div class="aguard-box">
+      <div class="aguard-icon">⏳</div>
+      <div class="aguard-title">Aguardando aprovação</div>
+      <div class="aguard-sub">Sua conta está sendo analisada pelo administrador.<br>Você receberá acesso em breve.</div>
+      <div id="aguard-email" style="font-size:12px;color:var(--muted);margin-bottom:20px"></div>
+      <button class="btn btn-secondary" onclick="logout()">Sair</button>
     </div>
   </div>
 </div>
@@ -409,7 +438,6 @@ let CU=null,midSol=null,midSt=null,vData=[],vFile='',tabelasAprovadas={};
 
 // ════ INIT ════
 async function init(){
-  // Garante ADM sempre existe e com senha correta
   let users=await sg('cq_users')||{};
   users[ADM_EMAIL]={nome:ADM_NOME,email:ADM_EMAIL,senha:h(SENHA_PAD),role:'adm',criadoEm:users[ADM_EMAIL]?.criadoEm||new Date().toLocaleDateString('pt-BR')};
   await ss('cq_users',users);
@@ -418,8 +446,81 @@ async function init(){
   if(sess&&sess.e){
     if(isAdm(sess.e)){CU={nome:ADM_NOME,email:ADM_EMAIL,role:'adm'};entrar();return;}
     const u=(await sg('cq_users')||{})[sess.e];
-    if(u){CU=u;entrar();}
+    if(u){
+      if(u.role==='pendente'){mostrarAguardando(u);return;}
+      CU=u;entrar();
+    }
   }
+
+  // Inicializa Google Identity
+  if(typeof google!=='undefined'&&google.accounts){
+    google.accounts.id.initialize({
+      client_id:'352647278553-hjffrkkvoq7j7sca6iudf94s3i31kgd1.apps.googleusercontent.com',
+      callback: onGoogleLogin,
+      auto_select:false
+    });
+  }
+}
+
+function loginGoogle(){
+  if(typeof google==='undefined'||!google.accounts){
+    showToast('Google não disponível. Use e-mail e senha.');return;
+  }
+  google.accounts.id.prompt();
+}
+
+async function onGoogleLogin(response){
+  try{
+    // Decodifica JWT do Google
+    const payload=JSON.parse(atob(response.credential.split('.')[1]));
+    const email=payload.email.toLowerCase();
+    const nome=payload.name||email;
+
+    // ADM via Google
+    if(isAdm(email)){
+      CU={nome:ADM_NOME,email:ADM_EMAIL,role:'adm'};
+      await ls('cq_sess',{e:ADM_EMAIL});
+      entrar();return;
+    }
+
+    let users=await sg('cq_users')||{};
+
+    // Usuário já existe
+    if(users[email]){
+      const u=users[email];
+      if(u.role==='pendente'){mostrarAguardando(u);return;}
+      CU=u;
+      await ls('cq_sess',{e:email});
+      entrar();return;
+    }
+
+    // Novo usuário via Google — cria como pendente
+    const novoUser={nome,email,role:'pendente',via:'google',
+      criadoEm:new Date().toLocaleDateString('pt-BR')};
+    users[email]=novoUser;
+    await ss('cq_users',users);
+    await ls('cq_sess',{e:email});
+    mostrarAguardando(novoUser);
+    showToast('✅ Conta criada! Aguardando aprovação do ADM.');
+  }catch(e){
+    console.error(e);
+    showToast('Erro ao autenticar com Google.');
+  }
+}
+
+function mostrarAguardando(u){
+  document.getElementById('view-login').classList.add('hidden');
+  document.getElementById('view-aguardando').style.display='flex';
+  document.getElementById('aguard-email').textContent=u.email;
+}
+
+async function aprovarUser(email){
+  let users=await sg('cq_users')||{};
+  if(!users[email])return;
+  users[email].role='comercial';
+  await ss('cq_users',users);
+  showToast('✅ '+users[email].nome+' aprovado!');
+  renderUsers();
 }
 
 // ════ AUTH ════
@@ -530,8 +631,12 @@ async function logout(){
   await ls('cq_sess',null);
   CU=null;
   document.getElementById('view-login').classList.remove('hidden');
+  document.getElementById('view-aguardando').style.display='none';
   document.getElementById('main-header').style.display='none';
   document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
+  if(typeof google!=='undefined'&&google.accounts){
+    google.accounts.id.disableAutoSelect();
+  }
 }
 
 function showV(id,btn){
@@ -959,16 +1064,8 @@ const PRACA_LINHA={
   SCCP:147,SC1P:148,SC2P:149,SC3P:150,SC4P:151
 };
 
-function _faixas(exc){
-  const t=exc/1000,f5=t*30,f10=f5*1.35;
-  return[f5,f10,f10+t*10,f10+t*20,f10+t*40,f10+t*60,f10+t*90];
-}
-
-function _esc(v){
-  return String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;')
-    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-}
-
+function _faixas(exc){const t=exc/1000,f5=t*30,f10=f5*1.35;return[f5,f10,f10+t*10,f10+t*20,f10+t*40,f10+t*60,f10+t*90];}
+function _esc(v){return String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 function _setXML(xml,addr,val){
   const isNum=typeof val==='number';
   const re=new RegExp('<c r="'+addr+'"(\\s[^>]*)?>.*?</c>','s');
@@ -976,30 +1073,20 @@ function _setXML(xml,addr,val){
   const repl=(m,attrs)=>{
     const s=(attrs||'').match(/s="(\d+)"/);
     const sa=s?' s="'+s[1]+'"':'';
-    if(isNum) return '<c r="'+addr+'"'+sa+'><v>'+val+'</v></c>';
+    if(isNum)return '<c r="'+addr+'"'+sa+'><v>'+val+'</v></c>';
     return '<c r="'+addr+'"'+sa+' t="inlineStr"><is><t>'+_esc(val)+'</t></is></c>';
   };
-  xml=xml.replace(re,repl);
-  xml=xml.replace(reE,repl);
-  return xml;
+  return xml.replace(re,repl).replace(reE,repl);
 }
-
-async function _carregarJSZip(){
-  if(typeof JSZip!=='undefined') return true;
-  return new Promise(res=>{
-    const s=document.createElement('script');
-    s.src='https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
-    s.onload=()=>res(true);
-    s.onerror=()=>res(false);
-    document.head.appendChild(s);
-  });
+async function _loadJSZip(){
+  if(typeof JSZip!=='undefined')return true;
+  return new Promise(res=>{const s=document.createElement('script');s.src='https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';s.onload=()=>res(true);s.onerror=()=>res(false);document.head.appendChild(s);});
 }
 
 async function gerarExcel(sol,sugs){
   try{
     const c=sol.cli;
-    const meses=['Janeiro','Fevereiro','Março','Abril','Maio','Junho',
-                 'Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+    const meses=['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
     const dataAprov=(()=>{
       const src=sol.atualEm||sol.criadoEm||'';
       const partes=src.split('/');
@@ -1012,21 +1099,16 @@ async function gerarExcel(sol,sugs){
       }
       return(c.cu||'CLIENTE').toUpperCase()+' - '+new Date().toLocaleDateString('pt-BR');
     })();
-
     const nome=(c.razao||'tabela').replace(/[^a-zA-Z0-9]/g,'_').slice(0,30);
     const dataFile=new Date().toISOString().slice(0,10);
-
-    // Decodifica template
     const binStr=atob(TEMPLATE_B64);
     const binArr=new Uint8Array(binStr.length);
     for(let i=0;i<binStr.length;i++) binArr[i]=binStr.charCodeAt(i);
 
-    // Tenta JSZip (preserva logo)
-    const temJSZip=await _carregarJSZip();
+    const temJSZip=await _loadJSZip();
     if(temJSZip){
       const zip=await JSZip.loadAsync(binArr);
       let xml=await zip.file('xl/worksheets/sheet1.xml').async('string');
-
       xml=_setXML(xml,'D9',c.razao||''); xml=_setXML(xml,'D10',c.cnpj||'');
       xml=_setXML(xml,'N10',c.ie||'');   xml=_setXML(xml,'D11',c.end||'');
       xml=_setXML(xml,'D12',c.bairro||''); xml=_setXML(xml,'K12',c.cu||'');
@@ -1035,64 +1117,41 @@ async function gerarExcel(sol,sugs){
       xml=_setXML(xml,'L14',c.ecob||''); xml=_setXML(xml,'D15',c.carga||'');
       xml=_setXML(xml,'L15',sol.nV||''); xml=_setXML(xml,'M2',dataAprov);
       xml=_setXML(xml,'I1','');
-
       for(const sug of sugs){
-        if(!sug._pct||sug._pct===0) continue;
-        const linha=PRACA_LINHA[sug.praca]; if(!linha) continue;
-        const exc=sug.sug.exc, r=String(linha);
-        const n4=v=>Math.round(v*10000)/10000;
+        if(!sug._pct||sug._pct===0)continue;
+        const linha=PRACA_LINHA[sug.praca];if(!linha)continue;
+        const exc=sug.sug.exc,r=String(linha),n4=v=>Math.round(v*10000)/10000;
         const [f5,f10,f20,f30,f50,f70,f100]=_faixas(exc);
-        xml=_setXML(xml,'F'+r,n4(f5)); xml=_setXML(xml,'G'+r,n4(f10));
-        xml=_setXML(xml,'H'+r,n4(f20)); xml=_setXML(xml,'I'+r,n4(f30));
-        xml=_setXML(xml,'J'+r,n4(f50)); xml=_setXML(xml,'K'+r,n4(f70));
-        xml=_setXML(xml,'L'+r,n4(f100)); xml=_setXML(xml,'M'+r,n4(exc));
-        xml=_setXML(xml,'N'+r,n4(sug.sug.fv));
-        xml=_setXML(xml,'O'+r,n4(sug.sug.gr));
-        xml=_setXML(xml,'P'+r,n4(sug.sug.d));
+        xml=_setXML(xml,'F'+r,n4(f5));xml=_setXML(xml,'G'+r,n4(f10));
+        xml=_setXML(xml,'H'+r,n4(f20));xml=_setXML(xml,'I'+r,n4(f30));
+        xml=_setXML(xml,'J'+r,n4(f50));xml=_setXML(xml,'K'+r,n4(f70));
+        xml=_setXML(xml,'L'+r,n4(f100));xml=_setXML(xml,'M'+r,n4(exc));
+        xml=_setXML(xml,'N'+r,n4(sug.sug.fv));xml=_setXML(xml,'O'+r,n4(sug.sug.gr));xml=_setXML(xml,'P'+r,n4(sug.sug.d));
       }
-
       zip.file('xl/worksheets/sheet1.xml',xml);
-      const blob=await zip.generateAsync({type:'blob',
-        mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        compression:'DEFLATE'});
+      const blob=await zip.generateAsync({type:'blob',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',compression:'DEFLATE'});
       const url=URL.createObjectURL(blob);
-      const a=document.createElement('a');
-      a.href=url; a.download='Tabela_'+nome+'_'+dataFile+'.xlsx'; a.click();
-      URL.revokeObjectURL(url);
+      const a=document.createElement('a');a.href=url;a.download='Tabela_'+nome+'_'+dataFile+'.xlsx';a.click();URL.revokeObjectURL(url);
       return true;
     }
-
-    // Fallback: XLSX com bookImages
+    // Fallback XLSX
     const wb=XLSX.read(binArr,{type:'array',cellStyles:true,bookImages:true});
-    const ws=wb.Sheets['GERENCIAL'];
-    if(!ws){showToast('Aba GERENCIAL não encontrada');return false;}
-
-    const set=(addr,val)=>{
-      const t=typeof val==='number'?'n':'s';
-      if(!ws[addr])ws[addr]={t,v:val};
-      else{ws[addr].t=t;ws[addr].v=val;delete ws[addr].f;delete ws[addr].w;}
-    };
-
-    set('D9',c.razao||''); set('D10',c.cnpj||''); set('N10',c.ie||'');
-    set('D11',c.end||'');  set('D12',c.bairro||''); set('K12',c.cu||'');
-    set('N12',c.cep||'');  set('D13',c.ct||''); set('K13',c.tel||'');
-    set('D14',c.email||''); set('L14',c.ecob||''); set('D15',c.carga||'');
-    set('L15',sol.nV||''); set('M2',dataAprov); set('I1','');
-
+    const ws=wb.Sheets['GERENCIAL'];if(!ws){showToast('Aba não encontrada');return false;}
+    const set=(addr,val)=>{const t=typeof val==='number'?'n':'s';if(!ws[addr])ws[addr]={t,v:val};else{ws[addr].t=t;ws[addr].v=val;delete ws[addr].f;delete ws[addr].w;}};
+    set('D9',c.razao||'');set('D10',c.cnpj||'');set('N10',c.ie||'');set('D11',c.end||'');
+    set('D12',c.bairro||'');set('K12',c.cu||'');set('N12',c.cep||'');set('D13',c.ct||'');
+    set('K13',c.tel||'');set('D14',c.email||'');set('L14',c.ecob||'');set('D15',c.carga||'');
+    set('L15',sol.nV||'');set('M2',dataAprov);set('I1','');
     for(const sug of sugs){
-      if(!sug._pct||sug._pct===0) continue;
-      const linha=PRACA_LINHA[sug.praca]; if(!linha) continue;
-      const exc=sug.sug.exc, r=String(linha);
-      const n4=v=>Math.round(v*10000)/10000;
+      if(!sug._pct||sug._pct===0)continue;
+      const linha=PRACA_LINHA[sug.praca];if(!linha)continue;
+      const exc=sug.sug.exc,r=String(linha),n4=v=>Math.round(v*10000)/10000;
       const [f5,f10,f20,f30,f50,f70,f100]=_faixas(exc);
-      set('F'+r,n4(f5)); set('G'+r,n4(f10)); set('H'+r,n4(f20));
-      set('I'+r,n4(f30)); set('J'+r,n4(f50)); set('K'+r,n4(f70));
-      set('L'+r,n4(f100)); set('M'+r,n4(exc));
-      set('N'+r,n4(sug.sug.fv)); set('O'+r,n4(sug.sug.gr)); set('P'+r,n4(sug.sug.d));
+      set('F'+r,n4(f5));set('G'+r,n4(f10));set('H'+r,n4(f20));set('I'+r,n4(f30));
+      set('J'+r,n4(f50));set('K'+r,n4(f70));set('L'+r,n4(f100));set('M'+r,n4(exc));
+      set('N'+r,n4(sug.sug.fv));set('O'+r,n4(sug.sug.gr));set('P'+r,n4(sug.sug.d));
     }
-
-    XLSX.writeFile(wb,'Tabela_'+nome+'_'+dataFile+'.xlsx',
-      {bookType:'xlsx',bookImages:true});
+    XLSX.writeFile(wb,'Tabela_'+nome+'_'+dataFile+'.xlsx',{bookType:'xlsx',bookImages:true});
     return true;
   }catch(e){console.error(e);showToast('Erro: '+e.message);return false;}
 }
@@ -1146,7 +1205,17 @@ async function renderUsers(){
   const users=await sg('cq_users')||{};
   if(!users[ADM_EMAIL])users[ADM_EMAIL]={nome:ADM_NOME,email:ADM_EMAIL,role:'adm',criadoEm:'—'};
   const lista=Object.values(users).sort((a,b)=>a.nome.localeCompare(b.nome));
-  document.getElementById('users-tbody').innerHTML=lista.map(u=>`<tr><td><strong>${u.nome}</strong></td><td>${u.email}</td><td><span class="status ${u.role==='adm'?'status-aprovado':'status-analise'}">${u.role==='adm'?'Administrador':'Comercial'}</span></td><td style="font-size:11px">${u.criadoEm||'—'}</td><td>${isAdm(u.email)?'<span style="font-size:11px;color:var(--muted)">ADM principal</span>':`<button class="btn btn-danger btn-sm" onclick="remUser('${u.email}')">Remover</button>`}</td></tr>`).join('');
+  document.getElementById('users-tbody').innerHTML=lista.map(u=>{
+    const isPendente=u.role==='pendente';
+    const roleLabel=u.role==='adm'?'Administrador':isPendente?'⏳ Pendente':'Comercial';
+    const roleClass=u.role==='adm'?'status-aprovado':isPendente?'status-aguardando':'status-analise';
+    const acoes=isAdm(u.email)
+      ?'<span style="font-size:11px;color:var(--muted)">ADM principal</span>'
+      :isPendente
+        ?`<button class="btn btn-success btn-sm" onclick="aprovarUser('${u.email}')">✅ Aprovar</button> <button class="btn btn-danger btn-sm" onclick="remUser('${u.email}')">Recusar</button>`
+        :`<button class="btn btn-danger btn-sm" onclick="remUser('${u.email}')">Remover</button>`;
+    return `<tr><td><strong>${u.nome}</strong></td><td>${u.email}</td><td><span class="status ${roleClass}">${roleLabel}</span></td><td style="font-size:11px">${u.criadoEm||'—'}</td><td>${acoes}</td></tr>`;
+  }).join('');
 }
 
 async function remUser(email){
