@@ -964,68 +964,39 @@ function _faixas(exc){
   return[f5,f10,f10+t*10,f10+t*20,f10+t*40,f10+t*60,f10+t*90];
 }
 
-// Substitui valor de uma célula no XML do sheet preservando o estilo (atributo s)
-function _setCelula(xml, addr, val){
-  // Escapa caracteres especiais para XML
-  const esc=v=>String(v)
-    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
-    .replace(/"/g,'&quot;').replace(/'/g,'&apos;');
+function _esc(v){
+  return String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
 
-  const isNum = typeof val === 'number';
-
-  // Regex que captura a célula com qualquer conteúdo atual
-  const re = new RegExp('<c r="' + addr + '"(\\s[^>]*)?>.*?</c>', 's');
-  const reEmpty = new RegExp('<c r="' + addr + '"([^/]*)/>');
-
-  if(isNum){
-    // Célula numérica: <c r="ADDR" s="N" t="n"><v>VAL</v></c>
-    xml = xml.replace(re, (m, attrs) => {
-      const s = (attrs||'').match(/s="(\d+)"/);
-      const sAttr = s ? ` s="${s[1]}"` : '';
-      return `<c r="${addr}"${sAttr}><v>${val}</v></c>`;
-    });
-    xml = xml.replace(reEmpty, (m, attrs) => {
-      const s = (attrs||'').match(/s="(\d+)"/);
-      const sAttr = s ? ` s="${s[1]}"` : '';
-      return `<c r="${addr}"${sAttr}><v>${val}</v></c>`;
-    });
-  } else {
-    // Célula string inline: <c r="ADDR" s="N" t="inlineStr"><is><t>VAL</t></is></c>
-    xml = xml.replace(re, (m, attrs) => {
-      const s = (attrs||'').match(/s="(\d+)"/);
-      const sAttr = s ? ` s="${s[1]}"` : '';
-      return `<c r="${addr}"${sAttr} t="inlineStr"><is><t>${esc(val)}</t></is></c>`;
-    });
-    xml = xml.replace(reEmpty, (m, attrs) => {
-      const s = (attrs||'').match(/s="(\d+)"/);
-      const sAttr = s ? ` s="${s[1]}"` : '';
-      return `<c r="${addr}"${sAttr} t="inlineStr"><is><t>${esc(val)}</t></is></c>`;
-    });
-  }
+function _setXML(xml,addr,val){
+  const isNum=typeof val==='number';
+  const re=new RegExp('<c r="'+addr+'"(\\s[^>]*)?>.*?</c>','s');
+  const reE=new RegExp('<c r="'+addr+'"([^/]*?)/>');
+  const repl=(m,attrs)=>{
+    const s=(attrs||'').match(/s="(\d+)"/);
+    const sa=s?' s="'+s[1]+'"':'';
+    if(isNum) return '<c r="'+addr+'"'+sa+'><v>'+val+'</v></c>';
+    return '<c r="'+addr+'"'+sa+' t="inlineStr"><is><t>'+_esc(val)+'</t></is></c>';
+  };
+  xml=xml.replace(re,repl);
+  xml=xml.replace(reE,repl);
   return xml;
 }
 
-async function gerarExcel(sol, sugs){
+async function _carregarJSZip(){
+  if(typeof JSZip!=='undefined') return true;
+  return new Promise(res=>{
+    const s=document.createElement('script');
+    s.src='https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
+    s.onload=()=>res(true);
+    s.onerror=()=>res(false);
+    document.head.appendChild(s);
+  });
+}
+
+async function gerarExcel(sol,sugs){
   try{
-    // Carrega JSZip dinamicamente se não estiver disponível
-    if(typeof JSZip==='undefined'){
-      await new Promise((res,rej)=>{
-        const s=document.createElement('script');
-        s.src='https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
-        s.onload=res; s.onerror=rej;
-        document.head.appendChild(s);
-      });
-    }
-
-    // Decodifica template ZIP
-    const binStr=atob(TEMPLATE_B64);
-    const binArr=new Uint8Array(binStr.length);
-    for(let i=0;i<binStr.length;i++) binArr[i]=binStr.charCodeAt(i);
-
-    // Abre ZIP preservando TODOS os arquivos (incluindo logo)
-    const zip=await JSZip.loadAsync(binArr);
-    let xml=await zip.file('xl/worksheets/sheet1.xml').async('string');
-
     const c=sol.cli;
     const meses=['Janeiro','Fevereiro','Março','Abril','Maio','Junho',
                  'Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
@@ -1042,62 +1013,91 @@ async function gerarExcel(sol, sugs){
       return(c.cu||'CLIENTE').toUpperCase()+' - '+new Date().toLocaleDateString('pt-BR');
     })();
 
-    // Preenche dados do cliente
-    xml=_setCelula(xml,'D9', c.razao||'');
-    xml=_setCelula(xml,'D10',c.cnpj||'');
-    xml=_setCelula(xml,'N10',c.ie||'');
-    xml=_setCelula(xml,'D11',c.end||'');
-    xml=_setCelula(xml,'D12',c.bairro||'');
-    xml=_setCelula(xml,'K12',c.cu||'');
-    xml=_setCelula(xml,'N12',c.cep||'');
-    xml=_setCelula(xml,'D13',c.ct||'');
-    xml=_setCelula(xml,'K13',c.tel||'');
-    xml=_setCelula(xml,'D14',c.email||'');
-    xml=_setCelula(xml,'L14',c.ecob||'');
-    xml=_setCelula(xml,'D15',c.carga||'');
-    xml=_setCelula(xml,'L15',sol.nV||'');
-    xml=_setCelula(xml,'M2', dataAprov);
-    xml=_setCelula(xml,'I1', '');
+    const nome=(c.razao||'tabela').replace(/[^a-zA-Z0-9]/g,'_').slice(0,30);
+    const dataFile=new Date().toISOString().slice(0,10);
 
-    // Sobrescreve apenas praças com slider ajustado (_pct != 0)
-    for(const sug of sugs){
-      if(!sug._pct||sug._pct===0) continue;
-      const linha=PRACA_LINHA[sug.praca];
-      if(!linha) continue;
-      const exc=sug.sug.exc;
-      const r=String(linha);
-      const n4=v=>Math.round(v*10000)/10000;
-      const [f5,f10,f20,f30,f50,f70,f100]=_faixas(exc);
-      xml=_setCelula(xml,'F'+r,n4(f5)); xml=_setCelula(xml,'G'+r,n4(f10));
-      xml=_setCelula(xml,'H'+r,n4(f20)); xml=_setCelula(xml,'I'+r,n4(f30));
-      xml=_setCelula(xml,'J'+r,n4(f50)); xml=_setCelula(xml,'K'+r,n4(f70));
-      xml=_setCelula(xml,'L'+r,n4(f100)); xml=_setCelula(xml,'M'+r,n4(exc));
-      xml=_setCelula(xml,'N'+r,n4(sug.sug.fv));
-      xml=_setCelula(xml,'O'+r,n4(sug.sug.gr));
-      xml=_setCelula(xml,'P'+r,n4(sug.sug.d));
+    // Decodifica template
+    const binStr=atob(TEMPLATE_B64);
+    const binArr=new Uint8Array(binStr.length);
+    for(let i=0;i<binStr.length;i++) binArr[i]=binStr.charCodeAt(i);
+
+    // Tenta JSZip (preserva logo)
+    const temJSZip=await _carregarJSZip();
+    if(temJSZip){
+      const zip=await JSZip.loadAsync(binArr);
+      let xml=await zip.file('xl/worksheets/sheet1.xml').async('string');
+
+      xml=_setXML(xml,'D9',c.razao||''); xml=_setXML(xml,'D10',c.cnpj||'');
+      xml=_setXML(xml,'N10',c.ie||'');   xml=_setXML(xml,'D11',c.end||'');
+      xml=_setXML(xml,'D12',c.bairro||''); xml=_setXML(xml,'K12',c.cu||'');
+      xml=_setXML(xml,'N12',c.cep||'');  xml=_setXML(xml,'D13',c.ct||'');
+      xml=_setXML(xml,'K13',c.tel||'');  xml=_setXML(xml,'D14',c.email||'');
+      xml=_setXML(xml,'L14',c.ecob||''); xml=_setXML(xml,'D15',c.carga||'');
+      xml=_setXML(xml,'L15',sol.nV||''); xml=_setXML(xml,'M2',dataAprov);
+      xml=_setXML(xml,'I1','');
+
+      for(const sug of sugs){
+        if(!sug._pct||sug._pct===0) continue;
+        const linha=PRACA_LINHA[sug.praca]; if(!linha) continue;
+        const exc=sug.sug.exc, r=String(linha);
+        const n4=v=>Math.round(v*10000)/10000;
+        const [f5,f10,f20,f30,f50,f70,f100]=_faixas(exc);
+        xml=_setXML(xml,'F'+r,n4(f5)); xml=_setXML(xml,'G'+r,n4(f10));
+        xml=_setXML(xml,'H'+r,n4(f20)); xml=_setXML(xml,'I'+r,n4(f30));
+        xml=_setXML(xml,'J'+r,n4(f50)); xml=_setXML(xml,'K'+r,n4(f70));
+        xml=_setXML(xml,'L'+r,n4(f100)); xml=_setXML(xml,'M'+r,n4(exc));
+        xml=_setXML(xml,'N'+r,n4(sug.sug.fv));
+        xml=_setXML(xml,'O'+r,n4(sug.sug.gr));
+        xml=_setXML(xml,'P'+r,n4(sug.sug.d));
+      }
+
+      zip.file('xl/worksheets/sheet1.xml',xml);
+      const blob=await zip.generateAsync({type:'blob',
+        mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        compression:'DEFLATE'});
+      const url=URL.createObjectURL(blob);
+      const a=document.createElement('a');
+      a.href=url; a.download='Tabela_'+nome+'_'+dataFile+'.xlsx'; a.click();
+      URL.revokeObjectURL(url);
+      return true;
     }
 
-    // Salva XML modificado de volta no ZIP (logo e outros arquivos intactos)
-    zip.file('xl/worksheets/sheet1.xml', xml);
+    // Fallback: XLSX com bookImages
+    const wb=XLSX.read(binArr,{type:'array',cellStyles:true,bookImages:true});
+    const ws=wb.Sheets['GERENCIAL'];
+    if(!ws){showToast('Aba GERENCIAL não encontrada');return false;}
 
-    // Gera e baixa o arquivo
-    const blob=await zip.generateAsync({type:'blob',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',compression:'DEFLATE'});
-    const url=URL.createObjectURL(blob);
-    const a=document.createElement('a');
-    a.href=url;
-    const nome=(c.razao||'tabela').replace(/[^a-zA-Z0-9]/g,'_').slice(0,30);
-    a.download='Tabela_'+nome+'_'+new Date().toISOString().slice(0,10)+'.xlsx';
-    a.click();
-    URL.revokeObjectURL(url);
+    const set=(addr,val)=>{
+      const t=typeof val==='number'?'n':'s';
+      if(!ws[addr])ws[addr]={t,v:val};
+      else{ws[addr].t=t;ws[addr].v=val;delete ws[addr].f;delete ws[addr].w;}
+    };
+
+    set('D9',c.razao||''); set('D10',c.cnpj||''); set('N10',c.ie||'');
+    set('D11',c.end||'');  set('D12',c.bairro||''); set('K12',c.cu||'');
+    set('N12',c.cep||'');  set('D13',c.ct||''); set('K13',c.tel||'');
+    set('D14',c.email||''); set('L14',c.ecob||''); set('D15',c.carga||'');
+    set('L15',sol.nV||''); set('M2',dataAprov); set('I1','');
+
+    for(const sug of sugs){
+      if(!sug._pct||sug._pct===0) continue;
+      const linha=PRACA_LINHA[sug.praca]; if(!linha) continue;
+      const exc=sug.sug.exc, r=String(linha);
+      const n4=v=>Math.round(v*10000)/10000;
+      const [f5,f10,f20,f30,f50,f70,f100]=_faixas(exc);
+      set('F'+r,n4(f5)); set('G'+r,n4(f10)); set('H'+r,n4(f20));
+      set('I'+r,n4(f30)); set('J'+r,n4(f50)); set('K'+r,n4(f70));
+      set('L'+r,n4(f100)); set('M'+r,n4(exc));
+      set('N'+r,n4(sug.sug.fv)); set('O'+r,n4(sug.sug.gr)); set('P'+r,n4(sug.sug.d));
+    }
+
+    XLSX.writeFile(wb,'Tabela_'+nome+'_'+dataFile+'.xlsx',
+      {bookType:'xlsx',bookImages:true});
     return true;
-  }catch(e){
-    console.error('Erro gerarExcel:',e);
-    showToast('Erro: '+e.message);
-    return false;
-  }
+  }catch(e){console.error(e);showToast('Erro: '+e.message);return false;}
 }
 
-async function baixarTabela(solId){
+function baixarTabela(solId){
   const sol=(window._sols||[]).find(s=>s.id===solId);
   if(!sol)return;
   // Usa sugestões com sliders se disponíveis, senão recalcula
