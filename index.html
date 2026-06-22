@@ -5,8 +5,6 @@
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
 <title>Gestão Comercial - Diogo Koch</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500&display=swap');
 :root{--navy:#0F2240;--blue:#1B4F8A;--accent:#FF6B35;--light:#F0F4FA;--border:#D8E2F0;--text:#1A2332;--muted:#6B7A99;--green:#00875A;--red:#D93025;--purple:#7C3AED;--amber:#D97706;}
@@ -1322,6 +1320,7 @@ for(const s of sugsOrdenadas){
         <button class="btn btn-secondary btn-sm" onclick="resetSliders(${solId})">↺ Resetar</button>
         <button class="btn btn-danger btn-sm" onclick="remSolicitacao(${solId})">🗑️ Excluir Solicitação</button>
         <button class="btn btn-secondary btn-sm" onclick="closeModal('m-detalhe')">✕ Fechar</button>
+        <button class="btn btn-blue btn-sm" onclick="_visualizarPDFAtual(${solId})">🖨️ Visualizar PDF</button>
         <button class="btn btn-success" onclick="aprovarTabela(${solId})">${labelBtn}</button>
       </div>
     </div>`;
@@ -1419,9 +1418,8 @@ async function aprovarTabela(solId){
     const adj=aplicarAjuste(s,pct);
     return{...s,_pct:pct,sug:{...s.sug,...adj}};
   });
-  showToast('⏳ Gerando tabela Excel e PDF...');
+  showToast('⏳ Gerando Excel e abrindo PDF para impressão...');
   await gerarExcel(sol,sugsFinais);
-  await gerarPDF(sol,sugsFinais);
   tabelasAprovadas[solId]=true;
   tabelasAprovadasSugs[solId]=sugsFinais;
 
@@ -1436,7 +1434,7 @@ async function aprovarTabela(solId){
     window._sols=sols;
   }
 
-  showToast(jaEstavaAprovada?'✅ Tabela atualizada — Excel e PDF gerados!':'✅ Tabela aprovada — Excel e PDF gerados!');
+  showToast(jaEstavaAprovada?'✅ Tabela atualizada — Excel gerado!':'✅ Tabela aprovada — Excel gerado!');
   _renderTabela(solId,sol,Object.values(_sugsCached));
 }
 
@@ -1482,15 +1480,7 @@ const ORDEM_PDF=Object.keys(PRACA_LINHA).sort((a,b)=>PRACA_LINHA[a]-PRACA_LINHA[
 
 async function gerarPDF(sol, sugs){
   try{
-    if(typeof window.jspdf==='undefined'){
-      showToast('Biblioteca de PDF não carregada. Tente novamente.');
-      return false;
-    }
-    const {jsPDF}=window.jspdf;
-    const doc=new jsPDF({orientation:'landscape',unit:'mm',format:'a4'});
     const c=sol.cli;
-    const pageW=doc.internal.pageSize.getWidth();
-
     const meses=['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
     const dataAprov=(()=>{
       const src=sol.atualEm||sol.criadoEm||'';
@@ -1505,41 +1495,16 @@ async function gerarPDF(sol, sugs){
     })();
     const cidadeCliente=(c.cu||'CLIENTE').split('-')[0].trim().toUpperCase();
 
-    // ── Cabeçalho com logo
-    try{ doc.addImage('data:image/png;base64,'+LOGO_PDF_B64,'PNG',10,8,60,9); }catch(e){}
-    doc.setFont('helvetica','bold');
-    doc.setFontSize(9);
-    doc.setTextColor(15,34,64);
-    doc.text(cidadeCliente+' - '+dataAprov, pageW-10, 12, {align:'right'});
-
-    // ── Dados do cliente
-    let y=24;
-    doc.setFontSize(8);
-    const campo=(label,val,x)=>{
-      doc.setFont('helvetica','bold'); doc.text(label,x,y);
-      doc.setFont('helvetica','normal'); doc.text(String(val||'—'),x+doc.getTextWidth(label)+2,y);
-    };
-    campo('Razão Social:', c.razao, 10); campo('CNPJ:', c.cnpj, 150); campo('Insc. Estadual:', c.ie, 220);
-    y+=5; campo('Endereço:', c.end, 10);
-    y+=5; campo('Bairro:', c.bairro, 10); campo('Cidade-UF:', c.cu, 150); campo('CEP:', c.cep, 220);
-    y+=5; campo('Contato:', c.ct, 10); campo('Telefone:', c.tel, 150);
-    y+=5; campo('E-mail:', c.email, 10); campo('E-mail Cobrança:', c.ecob, 150);
-    y+=5; campo('Tipo de Carga:', c.carga, 10); campo('Resp. Comercial:', sol.nV, 150);
-
-    y+=8;
-    doc.setFillColor(15,34,64);
-    doc.rect(10,y-4,pageW-20,6,'F');
-    doc.setTextColor(255,255,255);
-    doc.setFont('helvetica','bold'); doc.setFontSize(9);
-    doc.text('TABELA DE FRETE - ORIGEM/DESTINO: BLUMENAU - SC', pageW/2, y, {align:'center'});
-    doc.setTextColor(0,0,0);
-
-    // ── Monta linhas da tabela (mesma lógica do Excel: usa sug ajustado ou padrão)
     const sugMap={};
     sugs.forEach(s=>{ sugMap[s.praca]=s; });
 
-    const rows=[];
+    const f2=n=>'R$ '+n.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+    const pct=n=>(n*100).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})+'%';
+
+    // ── Monta linhas da tabela com mesclas de Região/UF (igual ao Excel)
     let lastRegiao='', lastUF='';
+    const regiaoSpans={}, ufSpans={};
+    const linhasData=[];
     for(const praca of ORDEM_PDF){
       const info=PRACA_INFO[praca];
       if(!info) continue;
@@ -1560,69 +1525,141 @@ async function gerarPDF(sol, sugs){
         f50=tabRef.f50; f70=tabRef.f70; f100=tabRef.f100;
         exc=tabRef.exc; fv=tabRef.fv; gr=tabRef.gr; desp=tabRef.d;
       }
-
-      const rg=regiao!==lastRegiao?regiao:'';
-      const uft=uf!==lastUF?uf:'';
-      lastRegiao=regiao; lastUF=uf;
-
-      const f2=n=>'R$ '+n.toFixed(2);
-      const pct=n=>(n*100).toFixed(2)+'%';
-      rows.push([rg,uft,cidade,praca,f2(f5),f2(f10),f2(f20),f2(f30),f2(f50),f2(f70),f2(f100),f2(exc),pct(fv),pct(gr),f2(desp)]);
+      linhasData.push({regiao,uf,cidade,praca,f5,f10,f20,f30,f50,f70,f100,exc,fv,gr,desp});
     }
 
-    doc.autoTable({
-      startY:y+3,
-      head:[['Região','UF','Cidade','Praça','Até 5kg','Até 10kg','Até 20kg','Até 30kg','Até 50kg','Até 70kg','Até 100kg','Frete Exced./Ton','Frete Valor','GRIS','Despacho']],
-      body:rows,
-      theme:'grid',
-      styles:{fontSize:6,cellPadding:1.2},
-      headStyles:{fillColor:[27,79,138],textColor:255,fontStyle:'bold',fontSize:6.5},
-      alternateRowStyles:{fillColor:[240,244,250]},
-      columnStyles:{0:{cellWidth:16},1:{cellWidth:8},2:{cellWidth:20},3:{cellWidth:12}},
-      margin:{left:10,right:10},
-    });
+    // Calcula rowspans de Região e UF (mesclas verticais)
+    for(let i=0;i<linhasData.length;i++){
+      const cur=linhasData[i];
+      if(i===0||linhasData[i-1].regiao!==cur.regiao){
+        let span=1;
+        for(let j=i+1;j<linhasData.length&&linhasData[j].regiao===cur.regiao;j++) span++;
+        cur._regiaoSpan=span; cur._showRegiao=true;
+      } else { cur._showRegiao=false; }
 
-    // ── Parâmetros gerais (na página seguinte)
-    doc.addPage();
-    let y2=15;
-    doc.setFont('helvetica','bold'); doc.setFontSize(11);
-    doc.text('GENERALIDADES', 10, y2);
-    y2+=8;
-    doc.setFontSize(8); doc.setFont('helvetica','normal');
+      if(i===0||linhasData[i-1].uf!==cur.uf){
+        let span=1;
+        for(let j=i+1;j<linhasData.length&&linhasData[j].uf===cur.uf;j++) span++;
+        cur._ufSpan=span; cur._showUF=true;
+      } else { cur._showUF=false; }
+    }
 
+    const linhasHtml=linhasData.map(r=>`<tr>
+      ${r._showRegiao?`<td rowspan="${r._regiaoSpan}" class="reg-cell">${r.regiao}</td>`:''}
+      ${r._showUF?`<td rowspan="${r._ufSpan}" class="uf-cell">${r.uf}</td>`:''}
+      <td class="cidade-cell">${r.cidade}</td>
+      <td class="praca-cell">${r.praca}</td>
+      <td class="num">${f2(r.f5)}</td>
+      <td class="num">${f2(r.f10)}</td>
+      <td class="num">${f2(r.f20)}</td>
+      <td class="num">${f2(r.f30)}</td>
+      <td class="num">${f2(r.f50)}</td>
+      <td class="num">${f2(r.f70)}</td>
+      <td class="num">${f2(r.f100)}</td>
+      <td class="num">${f2(r.exc)}</td>
+      <td class="num">${pct(r.fv)}</td>
+      <td class="num">${pct(r.gr)}</td>
+      <td class="num">${f2(r.desp)}</td>
+    </tr>`).join('');
+
+    // ── Generalidades (usa parâmetros editados se houver)
     const paramsSol=(sol.paramsFinais&&Object.keys(sol.paramsFinais).length>0)?sol.paramsFinais:(_paramsEditados[sol.id]||{});
     const pGet=chave=>paramsSol[chave]!==undefined?paramsSol[chave]:PARAM_DEFAULTS[chave].val;
-    const linhasGen=[
-      ['Frete Valor Mínimo', pGet('fv_min')],
-      ['GRIS Mínimo', pGet('gris_min')],
-      ['Pedágio (a cada 100kg ou fração)', pGet('pedagio')],
-      ['TAS (Taxa Adm. SEFAZ, por CT-e)', pGet('tas')],
-      ['TDE (acréscimo sobre frete original)', (pGet('tde')*100).toFixed(1)+'%'],
-      ['Razão da Cubagem (M³)', pGet('cubagem')],
-      ['Taxa de Agendamento', (pGet('taxa_agend')*100).toFixed(1)+'%'],
-      ['Agendamento Mínimo', pGet('agend_min')],
-    ];
-    doc.autoTable({
-      startY:y2,
-      head:[['Parâmetro','Valor']],
-      body:linhasGen.map(([l,v])=>[l, typeof v==='number'?'R$ '+v.toFixed(2):v]),
-      theme:'grid',
-      styles:{fontSize:8,cellPadding:2},
-      headStyles:{fillColor:[27,79,138],textColor:255},
-      margin:{left:10,right:10},
-      tableWidth:120,
-    });
 
-    // ── Rodapé com assinatura
-    const finalY=doc.lastAutoTable.finalY+25;
-    doc.setFontSize(8);
-    doc.line(20,finalY,90,finalY);
-    doc.line(110,finalY,180,finalY);
-    doc.text('Cliente', 50, finalY+5, {align:'center'});
-    doc.text('Transportador', 145, finalY+5, {align:'center'});
+    // ── Monta o HTML completo da página de impressão
+    const printHtml=`<!DOCTYPE html><html><head><meta charset="UTF-8">
+    <title>Tabela_${(c.razao||'tabela').replace(/[^a-zA-Z0-9]/g,'_')}</title>
+    <style>
+      @page{size:A4 landscape;margin:8mm;}
+      *{box-sizing:border-box;margin:0;padding:0;}
+      body{font-family:Arial,sans-serif;font-size:8px;color:#000;}
+      .logo-area{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;}
+      .logo-area img{height:32px;}
+      .data-tag{font-size:10px;font-weight:bold;}
+      table.dados{width:100%;border-collapse:collapse;margin-bottom:4px;font-size:8px;}
+      table.dados td{border:1px solid #000;padding:2px 5px;}
+      table.dados td.label{font-weight:bold;background:#F2F2F2;width:90px;}
+      .titulo-frete{background:#9CA3AF;color:#000;text-align:center;font-weight:bold;font-size:9px;padding:3px;border:1px solid #000;}
+      table.frete{width:100%;border-collapse:collapse;font-size:7px;}
+      table.frete th{background:#1B4F8A;color:#fff;border:1px solid #000;padding:2px;text-align:center;font-size:7px;}
+      table.frete td{border:1px solid #000;padding:1.5px 3px;text-align:center;}
+      table.frete td.reg-cell,table.frete td.uf-cell{font-weight:bold;background:#F8F8F8;}
+      table.frete td.cidade-cell{text-align:left;}
+      table.frete td.praca-cell{font-weight:bold;}
+      table.frete tr:nth-child(even) td:not(.reg-cell):not(.uf-cell){background:#FBFBFB;}
+      .pagebreak{page-break-before:always;}
+      table.gen{width:100%;border-collapse:collapse;font-size:7px;margin-bottom:6px;}
+      table.gen th{background:#1B4F8A;color:#fff;padding:3px;text-align:center;font-size:8px;}
+      table.gen td{border:1px solid #999;padding:2px 5px;}
+      table.gen td.glabel{width:75%;}
+      table.gen td.gval{text-align:right;font-weight:bold;width:25%;}
+      .assinaturas{display:flex;justify-content:space-around;margin-top:30px;font-size:9px;}
+      .assinaturas div{text-align:center;width:200px;border-top:1px solid #000;padding-top:4px;}
+    </style></head><body>
 
-    const nome=(c.razao||'tabela').replace(/[^a-zA-Z0-9]/g,'_').slice(0,30);
-    doc.save('Tabela_'+nome+'_'+new Date().toISOString().slice(0,10)+'.pdf');
+    <div class="logo-area">
+      <img src="data:image/png;base64,${LOGO_PDF_B64}">
+      <div class="data-tag">${cidadeCliente} - ${dataAprov}</div>
+    </div>
+
+    <table class="dados">
+      <tr><td class="label">Razão Social:</td><td colspan="5">${c.razao||''}</td></tr>
+      <tr><td class="label">CNPJ:</td><td colspan="2">${c.cnpj||''}</td><td class="label">Inscrição Estadual:</td><td colspan="2">${c.ie||''}</td></tr>
+      <tr><td class="label">Endereço:</td><td colspan="5">${c.end||''}</td></tr>
+      <tr><td class="label">Bairro:</td><td>${c.bairro||''}</td><td class="label">Cidade-UF:</td><td>${c.cu||''}</td><td class="label">CEP:</td><td>${c.cep||''}</td></tr>
+      <tr><td class="label">Contato:</td><td colspan="2">${c.ct||''}</td><td class="label">Telefone:</td><td colspan="2">${c.tel||''}</td></tr>
+      <tr><td class="label">E-mail:</td><td colspan="2">${c.email||''}</td><td class="label">E-mail Cobrança:</td><td colspan="2">${c.ecob||''}</td></tr>
+      <tr><td class="label">Tipo de Carga:</td><td colspan="2">${c.carga||''}</td><td class="label">Resp. Comercial:</td><td colspan="2">${sol.nV||''}</td></tr>
+    </table>
+
+    <div class="titulo-frete">TABELA DE FRETE - ORIGEM/DESTINO: BLUMENAU - SC</div>
+
+    <table class="frete">
+      <thead><tr>
+        <th rowspan="2">Região</th><th rowspan="2">UF</th><th rowspan="2">Cidade</th><th rowspan="2">Praça</th>
+        <th colspan="7">Origem/Destino</th><th rowspan="2">Frete Exced./Ton</th><th rowspan="2">Frete Valor</th><th rowspan="2">GRIS</th><th rowspan="2">Despacho</th>
+      </tr><tr>
+        <th>Até 5kg</th><th>Até 10kg</th><th>Até 20kg</th><th>Até 30kg</th><th>Até 50kg</th><th>Até 70kg</th><th>Até 100kg</th>
+      </tr></thead>
+      <tbody>${linhasHtml}</tbody>
+    </table>
+
+    <div class="pagebreak"></div>
+
+    <table class="gen"><tr><th colspan="2">GENERALIDADES</th></tr>
+      <tr><td class="glabel">Frete Valor Mínimo</td><td class="gval">${f2(pGet('fv_min'))}</td></tr>
+      <tr><td class="glabel">GRIS Mínimo</td><td class="gval">${f2(pGet('gris_min'))}</td></tr>
+      <tr><td class="glabel">Pedágio - a cada 100kg ou fração</td><td class="gval">${f2(pGet('pedagio'))}</td></tr>
+      <tr><td class="glabel">TAS (Taxa de Administração SEFAZ) - por ct-e</td><td class="gval">${f2(pGet('tas'))}</td></tr>
+      <tr><td class="glabel">TDE (Taxa de Dificuldade de Entrega) - acréscimo sob frete original</td><td class="gval">${pct(pGet('tde'))}</td></tr>
+      <tr><td class="glabel">Razão da Cubagem - M3</td><td class="gval">${pGet('cubagem')}</td></tr>
+      <tr><td class="glabel">Taxa de Agendamento</td><td class="gval">${pct(pGet('taxa_agend'))}</td></tr>
+      <tr><td class="glabel">Agendamento Valor Mínimo</td><td class="gval">${f2(pGet('agend_min'))}</td></tr>
+      <tr><td class="glabel">ICMS/ISS: Conforme legislação local em vigor</td><td class="gval">—</td></tr>
+    </table>
+
+    <table class="gen"><tr><th colspan="2">CONDIÇÕES GERAIS</th></tr>
+      <tr><td class="glabel">Faturamento</td><td class="gval" style="text-align:left;font-weight:normal">Semanal com prazo de 15 dias (faturamento bancário).</td></tr>
+      <tr><td class="glabel">Reajustes</td><td class="gval" style="text-align:left;font-weight:normal">Semestrais, vinculados ao índice DECOPE/NTC. Datas base: março e setembro.</td></tr>
+      <tr><td class="glabel">TEC - Taxa Emergencial Combustível</td><td class="gval" style="text-align:left;font-weight:normal">Reajustes de diesel acima de 5% acionam a TEC automaticamente, com aviso prévio de 2 dias úteis.</td></tr>
+      <tr><td class="glabel">Validade da Proposta</td><td class="gval" style="text-align:left;font-weight:normal">Após 60 dias sem movimentação a proposta será cancelada.</td></tr>
+    </table>
+
+    <div class="assinaturas">
+      <div>Cliente</div>
+      <div>Transportador</div>
+    </div>
+
+    <script>
+      window.onload=function(){ setTimeout(function(){ window.print(); }, 350); };
+    </script>
+    </body></html>`;
+
+    // Abre em nova janela e dispara impressão (usuário escolhe "Salvar como PDF")
+    const win=window.open('','_blank');
+    if(!win){ showToast('Permita pop-ups para gerar o PDF.'); return false; }
+    win.document.write(printHtml);
+    win.document.close();
     return true;
   }catch(e){
     console.error('Erro gerarPDF:',e);
@@ -1765,6 +1802,18 @@ async function baixarTabelaExcel(solId){
   const sugs=_sugsFinaisParaDownload(sol);
   const ok=await gerarExcel(sol,sugs);
   if(ok) showToast('✅ Excel baixado com sucesso!');
+}
+
+async function _visualizarPDFAtual(solId){
+  const sol=(window._sols||[]).find(s=>s.id===solId);
+  if(!sol)return;
+  const sugsBase=Object.values(_sugsCached);
+  const sugsAtuais=sugsBase.map(s=>{
+    const pct=_ajustesAtivos[s.praca]||0;
+    const adj=aplicarAjuste(s,pct);
+    return{...s,_pct:pct,sug:{...s.sug,...adj}};
+  });
+  await gerarPDF(sol,sugsAtuais);
 }
 
 async function baixarTabelaPDF(solId){
