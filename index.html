@@ -1192,7 +1192,7 @@ async function gerarExcel(sol,sugs){
   }catch(e){console.error(e);showToast('Erro: '+e.message);return false;}
 }
 
-function baixarTabela(solId){
+async function baixarTabela(solId){
   const sol=(window._sols||[]).find(s=>s.id===solId);
   if(!sol)return;
   // Usa sugestões com sliders se disponíveis, senão recalcula
