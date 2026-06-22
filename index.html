@@ -143,6 +143,9 @@ input[type=range].adj-slider{flex:1;min-width:100px;accent-color:var(--blue);cur
 .slider-pct.pos{color:var(--red);background:#FEE2E2;}
 .slider-pct.neg{color:var(--green);background:#D1FAE5;}
 .slider-pct.zero{color:var(--muted);background:var(--light);}
+.step-btn{width:24px;height:24px;border-radius:6px;border:1.5px solid var(--border);background:#fff;color:var(--blue);font-size:14px;font-weight:800;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .15s;line-height:1;padding:0;}
+.step-btn:hover{background:var(--blue);color:#fff;border-color:var(--blue);}
+.step-btn:active{transform:scale(0.92);}
 .kg-badge{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:700;margin-left:4px;}
 .kg-badge.ideal{background:#D1FAE5;color:#065F46;}
 .kg-badge.alto{background:#FEE2E2;color:#991B1B;}
@@ -429,7 +432,73 @@ function cF(pr,cu,nf,pc,uf){const t=TAB[pc];if(!t)return null;const w=Math.max(p
 function processar(embs){const res=embs.map(r=>{const p=gP(r.c,r.u);if(!p)return{...r,err:1};const c=cF(r.pr,r.cu,r.nf,p,r.u);return c?{...r,p,...c}:{...r,err:1};});const val=res.filter(r=>!r.err);const byP={};for(const r of val){if(!byP[r.p])byP[r.p]={p:r.p,u:r.u,eT:0,eA:0,rT:0,rA:0,wA:0,nfT:0,somFP:0,somFV:0,somGR:0,somPed:0,somDesp:0};byP[r.p].eT++;byP[r.p].rT+=r.ff;byP[r.p].nfT+=r.nf;byP[r.p].somFP+=r.fp;byP[r.p].somFV+=r.fvA;byP[r.p].somGR+=r.grA;byP[r.p].somPed+=r.ped;byP[r.p].somDesp+=r.desp;if(r.ok){byP[r.p].eA++;byP[r.p].rA+=r.ff;byP[r.p].wA+=r.w;}}const ps=Object.values(byP).sort((a,b)=>b.rT-a.rT);const ac=val.filter(r=>r.ok),rA=ac.reduce((s,r)=>s+r.ff,0),wA=ac.reduce((s,r)=>s+r.w,0),nfT=val.reduce((s,r)=>s+r.nf,0),wT=val.reduce((s,r)=>s+r.pr,0);return{ps,n:val.length,na:ac.length,rT:val.reduce((s,r)=>s+r.ff,0),wT,nfT,kg:wA>0?rA/wA:0,va:wT>0?nfT/wT:0,ds:val.length>0?wT/val.length:0};}
 function classAlerta(kf,ki){if(!kf||!ki)return null;const dv=((kf-ki)/ki)*100;if(Math.abs(dv)<=5)return{tipo:'ok',dv,msg:'Dentro da faixa ideal (±5%)'};if(dv>5){if(dv>20)return{tipo:'critico',dv,msg:`⚠️ TABELA PADRÃO NÃO IDEAL — KG Final ${kf.toFixed(3)} está ${dv.toFixed(1)}% ACIMA do ideal.`};return{tipo:'atencao',dv,msg:`⚠️ Tabela fora do ideal — KG Final ${kf.toFixed(3)} está ${dv.toFixed(1)}% acima.`};}if(dv<-20)return{tipo:'critico',dv,msg:`⚠️ TABELA PADRÃO NÃO IDEAL — KG Final ${kf.toFixed(3)} está ${Math.abs(dv).toFixed(1)}% ABAIXO do ideal.`};return{tipo:'atencao',dv,msg:`⚠️ Tabela fora do ideal — KG Final ${kf.toFixed(3)} está ${Math.abs(dv).toFixed(1)}% abaixo.`};}
 function resumoAlertas(ps){const criticos=[],atencao=[],ok=[];for(const p of ps){const kf=p.wA>0?p.rA/p.wA:null,ki=KGI[p.p]||null;const al=classAlerta(kf,ki);if(!al)continue;if(al.tipo==='critico')criticos.push(p.p);else if(al.tipo==='atencao')atencao.push(p.p);else ok.push(p.p);}return{criticos,atencao,ok};}
-function gerarSugestoes(sol){const r=sol.res;const sugs=[];for(const p of r.ps){const kf=p.wA>0?p.rA/p.wA:null,ki=KGI[p.p]||null,tabA=TAB[p.p];if(!ki||!tabA)continue;const al=classAlerta(kf,ki);const dv=al?al.dv:0;const pcMed=p.eA>0?p.wA/p.eA:null;let excSug=tabA.exc,fvSug=tabA.fv,grSug=tabA.gr,despSug=tabA.d;let ajuste='manter',motivo='Dentro da faixa ideal (±5%)';if(al&&al.tipo!=='ok'&&pcMed&&pcMed>100){const divisor=dICMS(p.u||'GO');const fvMed=p.eA>0?p.somFV/p.eA:9.14,grMed=p.eA>0?p.somGR/p.eA:10.08,pedMed=p.eA>0?p.somPed/p.eA:14.85,despMed=p.eA>0?p.somDesp/p.eA:tabA.d;const fixedMed=fvMed+grMed+pedMed+6.31+despMed;const fpAlvo=ki*pcMed*divisor-fixedMed;if(fpAlvo>0){excSug=fpAlvo*1000/(COEF_F100+pcMed-100);}else{const rat=ki*pcMed*divisor/((kf||ki)*pcMed*divisor);excSug=tabA.exc*rat;fvSug=Math.max(tabA.fv*rat,0.001);grSug=Math.max(tabA.gr*rat,0.001);}ajuste=dv>0?'reduzir':'aumentar';motivo=al.msg;}const faixasSug=calcFaixas(excSug);let kgSim=null;if(pcMed&&pcMed>100){const divisor=dICMS(p.u||'GO');const fvM=Math.max((p.nfT/Math.max(p.eT,1))*fvSug,9.14),grM=Math.max((p.nfT/Math.max(p.eT,1))*grSug,10.08),pedM=p.eA>0?p.somPed/p.eA:14.85,despM=p.eA>0?p.somDesp/p.eA:tabA.d;const fpS=faixasSug.f100+(pcMed-100)*(excSug/1000);kgSim=(fpS+fvM+grM+6.31+pedM+despM)/divisor/pcMed;}sugs.push({praca:p.p,uf:p.u,kfAtual:kf,ki,dv,ajuste,motivo,alerta:al,atual:{exc:tabA.exc,fv:tabA.fv,gr:tabA.gr,d:tabA.d,faixas:calcFaixas(tabA.exc)},sug:{exc:excSug,fv:fvSug,gr:grSug,d:despSug,faixas:faixasSug},kgSim,pcMed,eA:p.eA});}return sugs;}
+function gerarSugestoes(sol){
+  const r=sol.res;
+  const sugs=[];
+  for(const p of r.ps){
+    const kf=p.wA>0?p.rA/p.wA:null, ki=KGI[p.p]||null, tabA=TAB[p.p];
+    if(!ki||!tabA) continue;
+
+    const al=classAlerta(kf,ki);
+    const dv=al?al.dv:0;
+    const pcMed=p.eA>0?p.wA/p.eA:null;
+
+    // Componentes médios reais do cliente naquela praça (para simulação precisa)
+    const fvMed=p.eA>0?p.somFV/p.eA:9.14;
+    const grMed=p.eA>0?p.somGR/p.eA:10.08;
+    const pedMed=p.eA>0?p.somPed/p.eA:14.85;
+    const despMed=p.eA>0?p.somDesp/p.eA:tabA.d;
+    const divisor=dICMS(p.u||'GO');
+
+    // ── PONTO DE PARTIDA: sempre a TABELA GERENCIAL DE REFERÊNCIA (não fórmula reversa)
+    const excRef=tabA.exc, fvRef=tabA.fv, grRef=tabA.gr, despRef=tabA.d;
+
+    // Calcula o KG que a referência geraria com o peso médio REAL do cliente
+    function kgComExc(exc){
+      if(!pcMed||pcMed<=100) return null;
+      const faixas=calcFaixas(exc);
+      const fp=faixas.f100+(pcMed-100)*(exc/1000);
+      const fvM=Math.max((p.nfT/Math.max(p.eT,1))*fvRef,9.14);
+      const grM=Math.max((p.nfT/Math.max(p.eT,1))*grRef,10.08);
+      return (fp+fvM+grM+6.31+pedMed+despMed)/divisor/pcMed;
+    }
+
+    const kgComReferencia=kgComExc(excRef);
+
+    // ── Sugere automaticamente o % de slider que mais aproxima do KG Ideal
+    // Busca binária simples no range -30% a +30%
+    let pctSugerido=0;
+    if(kgComReferencia&&pcMed&&pcMed>100){
+      let melhorPct=0, melhorDist=Math.abs(kgComReferencia-ki);
+      for(let pct=-30;pct<=30;pct+=1){
+        const excTeste=excRef*(1+pct/100);
+        const kgTeste=kgComExc(excTeste);
+        if(kgTeste){
+          const dist=Math.abs(kgTeste-ki);
+          if(dist<melhorDist){melhorDist=dist;melhorPct=pct;}
+        }
+      }
+      pctSugerido=melhorPct;
+    }
+
+    let ajuste='manter', motivo='Dentro da faixa ideal (±5%)';
+    if(al&&al.tipo!=='ok'){
+      ajuste=dv>0?'reduzir':'aumentar';
+      motivo=al.msg;
+    }
+
+    sugs.push({
+      praca:p.p, uf:p.u, kfAtual:kf, ki, dv, ajuste, motivo, alerta:al,
+      pctSugerido,
+      atual:{exc:tabA.exc,fv:tabA.fv,gr:tabA.gr,d:tabA.d,faixas:calcFaixas(tabA.exc)},
+      // sug agora SEMPRE começa igual à referência — o slider que desloca a partir daqui
+      sug:{exc:excRef,fv:fvRef,gr:grRef,d:despRef,faixas:calcFaixas(excRef)},
+      kgSim:kgComReferencia,
+      pcMed, eA:p.eA
+    });
+  }
+  return sugs;
+}
 
 // ════ STATE ════
 let CU=null,midSol=null,midSt=null,vData=[],vFile='',tabelasAprovadas={};
@@ -756,7 +825,12 @@ function abrirTabela(solId){
   midSol=solId;
   _solAtual=sol;
   const sugs=_gerarESalvar(sol);
-  sugs.forEach(s=>{if(_ajustesAtivos[s.praca]===undefined)_ajustesAtivos[s.praca]=0;});
+  sugs.forEach(s=>{
+    if(_ajustesAtivos[s.praca]===undefined){
+      // Inicializa slider com o % sugerido automaticamente (não zero)
+      _ajustesAtivos[s.praca]=s.pctSugerido||0;
+    }
+  });
   _renderTabela(solId, sol, sugs);
 }
 
@@ -853,11 +927,13 @@ function _renderTabela(solId, sol, sugs){
       <td>
         <div class="slider-wrap">
           <div class="slider-row">
+            <button class="step-btn" onclick="stepSlider('${s.praca}',-1)" title="-1%">−</button>
             <span class="slider-lbl">-30%</span>
             <input type="range" class="adj-slider" id="sl-${s.praca}"
               min="-30" max="30" step="1" value="${pctAtual}"
               oninput="onSlider('${s.praca}',this.value)">
             <span class="slider-lbl">+30%</span>
+            <button class="step-btn" onclick="stepSlider('${s.praca}',1)" title="+1%">+</button>
             <span class="slider-pct ${sldCls}" id="spct-${s.praca}">${sldTxt}</span>
           </div>
         </div>
@@ -873,7 +949,7 @@ function _renderTabela(solId, sol, sugs){
     <span><span class="alerta-tag critico">🔴</span> Desvio &gt;20%</span>
     <span><span class="alerta-tag atencao">🟡</span> Desvio 5–20%</span>
     <span><span class="alerta-tag ok">✅</span> Desvio ≤5%</span>
-    <span style="margin-left:8px;color:var(--muted)">Slider: ajuste % aplicado sobre o Exc/Ton sugerido pelo sistema</span>
+    <span style="margin-left:8px;color:var(--muted)">Slider: ajuste % aplicado sobre o Exc/Ton da tabela gerencial (já posicionado no valor sugerido para atingir o KG Ideal)</span>
   </div>`;
 
   if(jaAprovada){
@@ -895,6 +971,16 @@ function _renderTabela(solId, sol, sugs){
 
   document.getElementById('m-body').innerHTML=html;
   document.getElementById('m-detalhe').classList.remove('hidden');
+}
+
+// ── Botões de incremento/decremento de 1% (mais preciso que arrastar a barra)
+function stepSlider(praca, delta){
+  const el=document.getElementById('sl-'+praca);
+  if(!el) return;
+  let novoVal=parseInt(el.value)+delta;
+  novoVal=Math.max(-30,Math.min(30,novoVal));
+  el.value=novoVal;
+  onSlider(praca, novoVal);
 }
 
 // ── Atualiza linha ao mover slider
