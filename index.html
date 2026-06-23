@@ -259,7 +259,7 @@ input[type=range].adj-slider{flex:1;min-width:100px;accent-color:var(--blue);cur
     </div>
     <div id="lt-cadastrar" style="display:none">
       <div style="background:#EBF1FC;border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:12px;color:var(--blue)">
-        📧 Use qualquer e-mail (Gmail, Hotmail, corporativo). O ADM aprovará seu acesso.
+        📧 Use qualquer e-mail (Gmail, Hotmail, corporativo). Seu acesso é liberado imediatamente após o cadastro.
       </div>
       <div class="field"><label>Nome <span class="required">*</span></label><input id="c_nome" placeholder="Seu nome"/></div>
       <div class="field"><label>E-mail <span class="required">*</span></label><input id="c_email" type="email" placeholder="seu@email.com"/></div>
@@ -612,7 +612,6 @@ async function init(){
     if(isAdm(sess.e)){CU={nome:ADM_NOME,email:ADM_EMAIL,role:'adm'};entrar();return;}
     const u=(await sg('cq_users')||{})[sess.e];
     if(u){
-      if(u.role==='pendente'){mostrarAguardando(u);return;}
       CU=u;entrar();
     }
   }
@@ -677,10 +676,6 @@ async function login(){
   const users=await sg('cq_users')||{};
   const u=users[email];
   if(!u||u.senha!==h(senha))return showA(err,'E-mail ou senha incorretos.');
-  if(u.role==='pendente'){
-    await ls('cq_sess',{e:email});
-    mostrarAguardando(u);return;
-  }
   CU=u;
   await ls('cq_sess',{e:email});
   entrar();
@@ -697,10 +692,10 @@ async function cadastrar(){
   if(isAdm(email))return showA(err,'E-mail reservado.');
   let users=await sg('cq_users')||{};
   if(users[email])return showA(err,'E-mail já cadastrado.');
-  // Cria como pendente — ADM precisa aprovar
-  users[email]={nome,email,senha:h(senha),role:'pendente',criadoEm:new Date().toLocaleDateString('pt-BR')};
+  // Cria já como comercial — acesso liberado imediatamente, sem aprovação do ADM
+  users[email]={nome,email,senha:h(senha),role:'comercial',criadoEm:new Date().toLocaleDateString('pt-BR')};
   await ss('cq_users',users);
-  showA(ok,'✅ Conta criada! Aguarde a aprovação do administrador.');
+  showA(ok,'✅ Conta criada! Você já pode entrar.');
   ['c_nome','c_email','c_senha','c_senha2'].forEach(i=>document.getElementById(i).value='');
 }
 
