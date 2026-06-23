@@ -740,6 +740,7 @@ function entrar(){
 }
 
 async function logout(){
+  _stopAutoRefresh();
   await ls('cq_sess',null);
   CU=null;
   document.getElementById('view-login').classList.remove('hidden');
@@ -751,6 +752,24 @@ async function logout(){
   }
 }
 
+let _autoRefreshTimer=null;
+
+function _startAutoRefresh(viewId){
+  _stopAutoRefresh();
+  _autoRefreshTimer=setInterval(()=>{
+    // Não atualiza se algum modal estiver aberto (evita perder o que o ADM está ajustando)
+    const modalAberto=!document.getElementById('m-detalhe').classList.contains('hidden')||!document.getElementById('m-status').classList.contains('hidden');
+    if(modalAberto) return;
+    if(viewId==='minhas') renderMinhas();
+    if(viewId==='pipeline') renderPipeline();
+    if(viewId==='monitor') renderMonitor();
+  },4000);
+}
+
+function _stopAutoRefresh(){
+  if(_autoRefreshTimer){clearInterval(_autoRefreshTimer);_autoRefreshTimer=null;}
+}
+
 function showV(id,btn){
   document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
   document.getElementById('view-'+id).classList.add('active');
@@ -760,6 +779,7 @@ function showV(id,btn){
   if(id==='usuarios')renderUsers();
   if(id==='minhas')renderMinhas();
   if(id==='nova'){document.getElementById('sol-form').style.display='block';document.getElementById('sol-ok').style.display='none';}
+  if(['minhas','pipeline','monitor'].includes(id)){_startAutoRefresh(id);}else{_stopAutoRefresh();}
 }
 
 // ════ UPLOAD ════
