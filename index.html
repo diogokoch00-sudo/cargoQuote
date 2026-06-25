@@ -515,6 +515,17 @@ function gP(c,u){const b=PM[u.toUpperCase()];if(!b)return null;const p=b.replace
 const COEF_F100=130.5;
 function calcFaixas(exc){const t=exc/1000;const f5=t*30,f10=f5*1.35,f20=f10+t*10,f30=f20+t*10,f50=f30+t*20,f70=f50+t*20,f100=f70+t*30;return{f5,f10,f20,f30,f50,f70,f100};}
 function cF(pr,cu,nf,pc,uf){const t=TAB[pc];if(!t)return null;const w=Math.max(pr,cu*300);let fp;if(w<=5)fp=t.f5;else if(w<=10)fp=t.f10;else if(w<=20)fp=t.f20;else if(w<=30)fp=t.f30;else if(w<=50)fp=t.f50;else if(w<=70)fp=t.f70;else if(w<=100)fp=t.f100;else fp=t.f100+((w-100)*(t.exc/1000));const fvA=Math.max(nf*t.fv,9.14),grA=Math.max(nf*t.gr,10.08),ped=Math.ceil(w/100)*14.85,sub=fp+fvA+grA+6.31+ped+t.d,ff=sub/dICMS(uf);return{w,fp,fvA,grA,ped,desp:t.d,sub,ff,kg:w>100.01?ff/w:null,ok:w>100.01};}
+// Recalcula o frete de um único embarque usando faixas/exc/fv/gr/desp já AJUSTADOS pelo slider,
+// em vez da tabela gerencial fixa — usado na memória de cálculo para refletir o ajuste em tempo real.
+function cFAdj(pr,cu,nf,uf,adj){
+  const w=Math.max(pr,cu*300);
+  const fx=adj.faixas;
+  let fp;
+  if(w<=5)fp=fx.f5;else if(w<=10)fp=fx.f10;else if(w<=20)fp=fx.f20;else if(w<=30)fp=fx.f30;else if(w<=50)fp=fx.f50;else if(w<=70)fp=fx.f70;else if(w<=100)fp=fx.f100;else fp=fx.f100+((w-100)*(adj.exc/1000));
+  const fvA=Math.max(nf*adj.fv,9.14),grA=Math.max(nf*adj.gr,10.08),ped=Math.ceil(w/100)*14.85,tas=6.31,desp=adj.d;
+  const sub=fp+fvA+grA+tas+ped+desp,ff=sub/dICMS(uf);
+  return{w,fp,fvA,grA,ped,tas,desp,sub,ff,kg:w>100.01?ff/w:null,ok:w>100.01};
+}
 function processar(embs){const res=embs.map(r=>{if(UFS_EXCLUIDAS.includes((r.u||'').toUpperCase()))return{...r,err:1};const p=gP(r.c,r.u);if(!p)return{...r,err:1};const c=cF(r.pr,r.cu,r.nf,p,r.u);return c?{...r,p,...c}:{...r,err:1};});const val=res.filter(r=>!r.err);const byP={};for(const r of val){if(!byP[r.p])byP[r.p]={p:r.p,u:r.u,eT:0,eA:0,rT:0,rA:0,wA:0,nfT:0,somFP:0,somFV:0,somGR:0,somPed:0,somDesp:0};byP[r.p].eT++;byP[r.p].rT+=r.ff;byP[r.p].nfT+=r.nf;byP[r.p].somFP+=r.fp;byP[r.p].somFV+=r.fvA;byP[r.p].somGR+=r.grA;byP[r.p].somPed+=r.ped;byP[r.p].somDesp+=r.desp;if(r.ok){byP[r.p].eA++;byP[r.p].rA+=r.ff;byP[r.p].wA+=r.w;}}const ps=Object.values(byP).sort((a,b)=>b.rT-a.rT);const ac=val.filter(r=>r.ok),rA=ac.reduce((s,r)=>s+r.ff,0),wA=ac.reduce((s,r)=>s+r.w,0),nfT=val.reduce((s,r)=>s+r.nf,0),wT=val.reduce((s,r)=>s+r.pr,0);return{ps,n:val.length,na:ac.length,rT:val.reduce((s,r)=>s+r.ff,0),wT,nfT,kg:wA>0?rA/wA:0,va:wT>0?nfT/wT:0,ds:val.length>0?wT/val.length:0};}
 function classAlerta(kf,ki){if(!kf||!ki)return null;const dv=((kf-ki)/ki)*100;if(Math.abs(dv)<=5)return{tipo:'ok',dv,msg:'Dentro da faixa ideal (±5%)'};if(dv>5){if(dv>20)return{tipo:'critico',dv,msg:`⚠️ TABELA PADRÃO NÃO IDEAL — KG Final ${kf.toFixed(3)} está ${dv.toFixed(1)}% ACIMA do ideal.`};return{tipo:'atencao',dv,msg:`⚠️ Tabela fora do ideal — KG Final ${kf.toFixed(3)} está ${dv.toFixed(1)}% acima.`};}if(dv<-20)return{tipo:'critico',dv,msg:`⚠️ TABELA PADRÃO NÃO IDEAL — KG Final ${kf.toFixed(3)} está ${Math.abs(dv).toFixed(1)}% ABAIXO do ideal.`};return{tipo:'atencao',dv,msg:`⚠️ Tabela fora do ideal — KG Final ${kf.toFixed(3)} está ${Math.abs(dv).toFixed(1)}% abaixo.`};}
 function resumoAlertas(ps){const criticos=[],atencao=[],ok=[];for(const p of ps){const kf=p.wA>0?p.rA/p.wA:null,ki=KGI[p.p]||null;const al=classAlerta(kf,ki);if(!al)continue;if(al.tipo==='critico')criticos.push(p.p);else if(al.tipo==='atencao')atencao.push(p.p);else ok.push(p.p);}return{criticos,atencao,ok};}
@@ -1229,10 +1240,12 @@ function _renderMemoriaCalculo(sol,sug,adj){
 
   if(sug.temVolumetria){
     // ── Reconstrói, a partir dos embarques brutos (sol.vol), quais pertencem a esta praça
+    // Cada componente do frete (Frete Peso, Frete Valor, GRIS, Pedágio, TAS, Despacho) é
+    // recalculado com os valores AJUSTADOS pelo slider atual (adj), não a tabela gerencial fixa.
     const embsDaPraca=(sol.vol||[]).map(r=>{
       const p=gP(r.c,r.u);
       if(p!==sug.praca) return null;
-      const c=cF(r.pr,r.cu,r.nf,p,r.u);
+      const c=cFAdj(r.pr,r.cu,r.nf,r.u,adj);
       return c?{...r,...c}:null;
     }).filter(Boolean);
 
@@ -1240,6 +1253,18 @@ function _renderMemoriaCalculo(sol,sug,adj){
     const linhasEmb=embsDaPraca.map(e=>`<tr>
         <td>${e.c}</td><td>${e.pr.toFixed(0)} kg</td><td>${e.cu.toFixed(2)} m³</td><td>R$ ${f2(e.nf)}</td>
         <td>${f2(e.w)} kg</td><td>${e.ok?'R$ '+f3(e.kg):'<span style="color:var(--muted)">excluído (&le;100kg)</span>'}</td>
+      </tr>`).join('');
+
+    const linhasComponentes=embsDaPraca.map(e=>`<tr>
+        <td>${e.c}</td>
+        <td>R$ ${f2(e.fp)}</td>
+        <td>R$ ${f2(e.fvA)}</td>
+        <td>R$ ${f2(e.grA)}</td>
+        <td>R$ ${f2(e.ped)}</td>
+        <td>R$ ${f2(e.tas)}</td>
+        <td>R$ ${f2(e.desp)}</td>
+        <td><strong>R$ ${f2(e.sub)}</strong></td>
+        <td>${e.ok?'<strong>R$ '+f2(e.ff)+'</strong>':'<span style="color:var(--muted)">—</span>'}</td>
       </tr>`).join('');
 
     const pesoMed=sug.pcMed?f2(sug.pcMed):'—';
@@ -1250,6 +1275,11 @@ function _renderMemoriaCalculo(sol,sug,adj){
       <div style="margin-bottom:8px;color:var(--muted)">Embarques informados na volumetria que caíram nesta praça (peso considerado = maior entre Peso Real e Cubagem × 300):</div>
       <table><thead><tr><th>Cidade</th><th>Peso Real</th><th>Cubagem</th><th>NF</th><th>Peso Considerado</th><th>KG Final do embarque</th></tr></thead>
         <tbody>${linhasEmb}</tbody></table>
+      <div style="margin-top:14px;margin-bottom:6px;font-weight:700;color:var(--navy);font-size:12px">💰 Detalhamento por componente do frete (com ajuste de ${sug._pct||(_ajustesAtivos[sug.praca]||0)}% aplicado)</div>
+      <div class="result-wrap" style="overflow-x:auto">
+        <table><thead><tr><th>Cidade</th><th>Frete Peso</th><th>Frete Valor</th><th>GRIS</th><th>Pedágio</th><th>TAS</th><th>Despacho</th><th>Subtotal</th><th>Frete Final (÷ICMS)</th></tr></thead>
+          <tbody>${linhasComponentes}</tbody></table>
+      </div>
       <div style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:14px">
         <div>
           <div class="mem-step"><span>Embarques na praça</span><span>${embsDaPraca.length}</span></div>
@@ -1268,32 +1298,10 @@ function _renderMemoriaCalculo(sol,sug,adj){
       </div>
     </div>`;
   } else {
-    // ── Praça simulada: explica de onde vieram as médias gerais usadas
-    const r=sol.res;
-    const origemPracas=(r.ps||[]).filter(p=>p.eA>0&&!UFS_EXCLUIDAS.includes((p.u||'').toUpperCase()));
-    const linhasOrigem=origemPracas.map(p=>`<tr>
-        <td>${p.p}</td><td>${p.eA}</td><td>${f2(p.wA/p.eA)} kg</td><td>R$ ${f2(p.nfT/Math.max(p.eT,1))}</td>
-      </tr>`).join('');
-    const totalEmb=origemPracas.reduce((s,p)=>s+p.eA,0);
-
+    // ── Praça sem volumetria própria: aviso simples, sem misturar dados de outras praças.
     return `<div class="mem-box">
-      <div style="font-weight:700;color:var(--navy);margin-bottom:6px">📐 Memória de cálculo — ${sug.praca} <span style="font-weight:500;font-style:italic;color:var(--muted)">(simulado — sem volumetria própria do cliente)</span></div>
-      <div style="margin-bottom:8px;color:var(--muted)">Esta praça não teve embarques na volumetria enviada. O sistema simula um cenário hipotético usando a <strong>média geral</strong> de peso e NF por embarque de todas as outras praças que tiveram volumetria real nesta cotação:</div>
-      ${linhasOrigem?`<table><thead><tr><th>Praça de origem</th><th>Emb. válidos</th><th>Peso médio</th><th>NF médio</th></tr></thead><tbody>${linhasOrigem}</tbody></table>`:'<div style="color:var(--muted);font-style:italic">Nenhuma praça com volumetria válida nesta cotação para servir de base.</div>'}
-      <div style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:14px">
-        <div>
-          <div class="mem-step"><span>Total embarques válidos usados na média</span><span>${totalEmb}</span></div>
-          <div class="mem-step"><span>Peso médio geral (hipotético)</span><span>${sug.pcMed?f2(sug.pcMed):'—'} kg</span></div>
-          <div class="mem-step"><span>NF médio geral (hipotético)</span><span>R$ ${f2(sug.nfMedSimulado||0)}</span></div>
-        </div>
-        <div>
-          <div class="mem-step"><span>Exc/Ton da tabela gerencial (com ajuste de ${_ajustesAtivos[sug.praca]||0}%)</span><span>R$ ${f2(adj.exc)}</span></div>
-          <div class="mem-step"><span>Frete Valor (mín. R$ 9,14)</span><span>R$ ${f2(Math.max((sug.nfMedSimulado||0)*adj.fv,9.14))}</span></div>
-          <div class="mem-step"><span>GRIS (mín. R$ 10,08)</span><span>R$ ${f2(Math.max((sug.nfMedSimulado||0)*adj.gr,10.08))}</span></div>
-          <div class="mem-step"><span>÷ divisor ICMS (${sug.uf})</span><span>÷ ${divisor}</span></div>
-          <div class="mem-step"><span>KG Final simulado da praça</span><span>${sug.kfAtual?'R$ '+f3(sug.kfAtual)+'/kg':'—'}</span></div>
-        </div>
-      </div>
+      <div style="font-weight:700;color:var(--navy);margin-bottom:6px">📐 Memória de cálculo — ${sug.praca}</div>
+      <div style="color:var(--muted);font-style:italic">ℹ️ Sem volumetria do cliente para esta praça — não há embarques reais para detalhar o cálculo.</div>
     </div>`;
   }
 }
