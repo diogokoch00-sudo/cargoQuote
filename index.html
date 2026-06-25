@@ -521,6 +521,20 @@ function gerarSugestoes(sol){
   const pMap={};
   r.ps.forEach(p=>{pMap[p.p]=p;});
 
+  // ── Médias GERAIS (cross-praça) de peso e NF por embarque, calculadas sobre
+  // TODOS os embarques com volumetria >100kg da solicitação. Usadas para simular
+  // um cenário hipotético nas praças que não têm volumetria própria.
+  let _somaPesoGeral=0,_somaNfGeral=0,_qtdEmbGeral=0;
+  r.ps.forEach(p=>{
+    if(p.eA>0){
+      _somaPesoGeral+=p.wA;
+      _somaNfGeral+=(p.nfT/Math.max(p.eT,1))*p.eA; // NF médio da praça * qtd embarques válidos
+      _qtdEmbGeral+=p.eA;
+    }
+  });
+  const pcMedGeral=_qtdEmbGeral>0?_somaPesoGeral/_qtdEmbGeral:null;
+  const nfMedGeral=_qtdEmbGeral>0?_somaNfGeral/_qtdEmbGeral:null;
+
   // Se a solicitação foi marcada como "sem volumetria", usa a TABELA COMERCIAL
   // como base de referência em vez da tabela gerencial (TAB)
   const baseTab = sol.semVolumetria ? TAB_COMERCIAL : TAB;
@@ -584,14 +598,48 @@ function gerarSugestoes(sol){
         pcMed, eA:p.eA
       });
     } else {
-      // ── PRAÇA SEM VOLUMETRIA: usa valores EXATOS da tabela gerencial de referência
+      // ── PRAÇA SEM VOLUMETRIA: simula um cenário hipotético usando o peso médio
+      // e o NF médio GERAIS (de todas as praças com volumetria da solicitação),
+      // aplicados contra a tabela gerencial/comercial de referência.
+      const divisorSim=dICMS(tabA.uf||'GO');
+      const excRefSV=tabA.exc, fvRefSV=tabA.fv, grRefSV=tabA.gr, despRefSV=tabA.d;
+
+      function kgComExcSV(exc){
+        if(!pcMedGeral||pcMedGeral<=100) return null;
+        const faixas=calcFaixas(exc);
+        const fp=faixas.f100+(pcMedGeral-100)*(exc/1000);
+        const fvM=Math.max((nfMedGeral||0)*fvRefSV,9.14);
+        const grM=Math.max((nfMedGeral||0)*grRefSV,10.08);
+        const pedSim=Math.ceil(pcMedGeral/100)*14.85;
+        return (fp+fvM+grM+6.31+pedSim+despRefSV)/divisorSim/pcMedGeral;
+      }
+
+      const kfSimulado=kgComExcSV(excRefSV);
+      const alSV=classAlerta(kfSimulado,ki);
+      const dvSV=alSV?alSV.dv:0;
+
+      let pctSugeridoSV=0;
+      if(kfSimulado&&pcMedGeral&&pcMedGeral>100){
+        let melhorPct=0, melhorDist=Math.abs(kfSimulado-ki);
+        for(let pct=-30;pct<=30;pct+=1){
+          const excTeste=excRefSV*(1+pct/100);
+          const kgTeste=kgComExcSV(excTeste);
+          if(kgTeste){
+            const dist=Math.abs(kgTeste-ki);
+            if(dist<melhorDist){melhorDist=dist;melhorPct=pct;}
+          }
+        }
+        pctSugeridoSV=melhorPct;
+      }
+
       sugs.push({
-        praca, uf:tabA.uf||'', kfAtual:null, ki, dv:0, ajuste:'manter',
-        motivo:'Sem volumetria — mantém tabela gerencial', alerta:null,
-        pctSugerido:0, temVolumetria:false,
+        praca, uf:tabA.uf||'', kfAtual:kfSimulado, ki, dv:dvSV,
+        ajuste:alSV&&alSV.tipo!=='ok'?(dvSV>0?'reduzir':'aumentar'):'manter',
+        motivo:alSV?alSV.msg:'Simulação com médias gerais — sem dado real do cliente', alerta:alSV,
+        pctSugerido:pctSugeridoSV, temVolumetria:false, simulado:true,
         atual:{exc:tabA.exc,fv:tabA.fv,gr:tabA.gr,d:tabA.d,faixas:calcFaixas(tabA.exc)},
-        sug:{exc:tabA.exc,fv:tabA.fv,gr:tabA.gr,d:tabA.d,faixas:calcFaixas(tabA.exc)},
-        kgSim:null, pcMed:null, eA:0
+        sug:{exc:excRefSV,fv:fvRefSV,gr:grRefSV,d:despRefSV,faixas:calcFaixas(excRefSV)},
+        kgSim:kfSimulado, pcMed:pcMedGeral, nfMedSimulado:nfMedGeral, eA:0
       });
     }
   }
@@ -1136,7 +1184,7 @@ function simKgAdj(sug, adj){
   if(!sug.pcMed||sug.pcMed<=100)return null;
   const divisor=dICMS(sug.uf||'GO');
   const pDados=_solAtual?(_solAtual.res.ps.find(p=>p.p===sug.praca)||null):null;
-  const nfMed=pDados&&pDados.eT>0?pDados.nfT/pDados.eT:0;
+  const nfMed=pDados&&pDados.eT>0?pDados.nfT/pDados.eT:(sug.nfMedSimulado||0);
   const fvM=Math.max(adj.fv*nfMed,9.14);
   const grM=Math.max(adj.gr*nfMed,10.08);
   const pedM=Math.ceil(sug.pcMed/100)*14.85;
@@ -1201,12 +1249,6 @@ function _renderTabela(solId, sol, sugs){
     else{sinalGlobal=`▼ ${Math.abs(dv).toFixed(1)}% abaixo — ajustar para cima`;corGlobal='red';}
   }
 
-  // ── Banners de alerta
-  let banners='';
-  if(criticos.length){banners+=`<div class="alerta-banner critico"><div class="alerta-icon">🔴</div><div><div class="alerta-title">Ajuste necessário — desvio crítico (&gt;20%) em ${criticos.length} praça(s)</div><div class="alerta-tags">${criticos.map(s=>`<span class="alerta-tag critico">${s.praca} — ${s.dv>0?'↓ reduzir':'↑ aumentar'} (${s.dv>0?'+':''}${s.dv.toFixed(1)}%)</span>`).join('')}</div></div></div>`;}
-  if(atencao.length){banners+=`<div class="alerta-banner atencao"><div class="alerta-icon">🟡</div><div><div class="alerta-title">Ajuste recomendado — desvio moderado (5–20%) em ${atencao.length} praça(s)</div><div class="alerta-tags">${atencao.map(s=>`<span class="alerta-tag atencao">${s.praca} — ${s.dv>0?'↓ reduzir':'↑ aumentar'} (${s.dv>0?'+':''}${s.dv.toFixed(1)}%)</span>`).join('')}</div></div></div>`;}
-  if(!criticos.length&&!atencao.length&&okPracas.length){banners+=`<div class="alerta-banner ok"><div class="alerta-icon">✅</div><div><div class="alerta-title">Todas as praças dentro da faixa ideal (±5%)</div></div></div>`;}
-
   // ── Header com média ponderada
   let html=`
   <div class="sug-header">
@@ -1221,100 +1263,76 @@ function _renderTabela(solId, sol, sugs){
     </div>
   </div>`;
 
-  html+=banners;
+  // ── Tabela compacta estilo planilha: Região/UF/Cidade/Praça mescladas verticalmente
+  html+=`<div style="font-size:13px;font-weight:700;color:var(--navy);margin:14px 0 10px">🔧 Análise de KG por Praça <span style="font-size:11px;font-weight:500;color:var(--muted)">— digite o % de ajuste por praça; praças sem volumetria mostram uma simulação com a média geral de peso/NF</span></div>`;
 
-  // ── Tabela de praças com slider
-  html+=`<div style="font-size:13px;font-weight:700;color:var(--navy);margin:14px 0 10px">🔧 Ajuste fino por praça <span style="font-size:11px;font-weight:500;color:var(--muted)">— use o slider para calibrar cada praça antes de aprovar</span></div>`;
+  // Monta lista ordenada por Região/UF/Cidade (mesma ordem do PDF) e calcula rowspans
+  const sugsMap={}; sugs.forEach(s=>{sugsMap[s.praca]=s;});
+  const linhasOrdenadas=ORDEM_PDF.map(praca=>({praca,info:PRACA_INFO[praca],sug:sugsMap[praca]})).filter(l=>l.info&&l.sug);
+  for(let i=0;i<linhasOrdenadas.length;i++){
+    const cur=linhasOrdenadas[i];
+    if(i===0||linhasOrdenadas[i-1].info[0]!==cur.info[0]){
+      let span=1; for(let j=i+1;j<linhasOrdenadas.length&&linhasOrdenadas[j].info[0]===cur.info[0];j++) span++;
+      cur._regiaoSpan=span; cur._showRegiao=true;
+    } else cur._showRegiao=false;
+    if(i===0||linhasOrdenadas[i-1].info[1]!==cur.info[1]){
+      let span=1; for(let j=i+1;j<linhasOrdenadas.length&&linhasOrdenadas[j].info[1]===cur.info[1];j++) span++;
+      cur._ufSpan=span; cur._showUF=true;
+    } else cur._showUF=false;
+  }
+
   html+=`<div class="result-wrap" style="margin-bottom:16px"><table><thead><tr>
-    <th>Praça</th><th>KG Final Atual</th><th>KG Ideal</th><th>Diagnóstico</th>
-    <th>Ajuste Manual (slider)</th><th>Exc/Ton Ajustado</th><th>f100 Ajustado</th><th>KG Simulado</th>
+    <th>Região</th><th>UF</th><th>Cidade</th><th>Praça</th>
+    <th>Média KG &gt;100kg</th><th>KG Ideal</th><th>Diferença</th><th>Ajuste (%)</th><th>Alerta</th>
   </tr></thead><tbody id="tabela-pracas-body">`;
 
-  // Ordena: praças COM volumetria primeiro (por desvio), depois SEM volumetria
-const sugsComVol=sugs.filter(s=>s.temVolumetria);
-const sugsSemVol=sugs.filter(s=>!s.temVolumetria);
-const sugsOrdenadas=[...sugsComVol, ...sugsSemVol];
+  for(const l of linhasOrdenadas){
+    const s=l.sug;
+    const pctAtual=_ajustesAtivos[s.praca]||0;
+    const adj=aplicarAjuste(s,pctAtual);
+    const kgSim=simKgAdj(s,adj);
 
-let mostrouSeparador=false;
+    const kfExibir = s.temVolumetria ? s.kfAtual : (s.kfAtual||null);
+    let diagBadge='<span style="font-size:11px;color:var(--muted)">—</span>';
+    if(s.alerta){
+      if(s.alerta.tipo==='critico') diagBadge=`<span class="alerta-tag critico">🔴 ${s.dv>0?'+':''}${s.dv.toFixed(1)}%</span>`;
+      else if(s.alerta.tipo==='atencao') diagBadge=`<span class="alerta-tag atencao">🟡 ${s.dv>0?'+':''}${s.dv.toFixed(1)}%</span>`;
+      else diagBadge=`<span class="alerta-tag ok">✅ Ideal</span>`;
+    }
 
-for(const s of sugsOrdenadas){
-  if(!s.temVolumetria && !mostrouSeparador){
-    mostrouSeparador=true;
-    html+=`<tr style="background:#F3F4F6"><td colspan="8" style="padding:8px 11px;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px">📋 Praças sem volumetria — mantém valores da tabela gerencial de referência</td></tr>`;
-  }
+    const dvTxt = kfExibir&&s.ki ? (((kfExibir-s.ki)/s.ki*100)>=0?'+':'')+(((kfExibir-s.ki)/s.ki*100).toFixed(1))+'%' : '—';
+    const dvCor = kfExibir&&s.ki ? ((kfExibir-s.ki)>=0?'color:var(--red)':'color:var(--green)') : 'color:var(--muted)';
 
-  const pctAtual=_ajustesAtivos[s.praca]||0;
-  const adj=aplicarAjuste(s,pctAtual);
-  const kgSim=s.temVolumetria?simKgAdj(s,adj):null;
+    const rowBg = s.alerta?.tipo==='critico'?'row-critico':s.alerta?.tipo==='atencao'?'row-atencao':(s.alerta?.tipo==='ok'?'row-ok':'');
+    const simTag = !s.temVolumetria ? '<br><span style="font-size:9px;color:var(--muted);font-style:italic">simulado (média geral)</span>' : '';
 
-  if(!s.temVolumetria){
-    // ── PRAÇA SEM VOLUMETRIA: linha simplificada, sem slider, valores fixos da referência
-    html+=`<tr style="background:#FAFAFA" id="row-${s.praca}">
-      <td><strong>${s.praca}</strong><br><span style="font-size:10px;color:var(--muted)">sem dados do cliente</span></td>
-      <td class="mono" style="color:var(--muted)">—</td>
+    html+=`<tr class="${rowBg}" id="row-${s.praca}">
+      ${l._showRegiao?`<td rowspan="${l._regiaoSpan}" style="font-weight:700;background:#F8FAFF;vertical-align:middle">${l.info[0]}</td>`:''}
+      ${l._showUF?`<td rowspan="${l._ufSpan}" style="font-weight:700;background:#FAFBFD;vertical-align:middle;text-align:center">${l.info[1]}</td>`:''}
+      <td>${l.info[2]}</td>
+      <td><strong>${s.praca}</strong>${simTag}</td>
+      <td class="mono">${kfExibir?'R$ '+f3(kfExibir):'—'}</td>
       <td class="mono">${s.ki?'R$ '+f3(s.ki):'—'}</td>
-      <td><span style="font-size:11px;color:var(--muted);font-style:italic">📋 Tabela gerencial</span></td>
-      <td style="text-align:center;color:var(--muted);font-size:11px">— sem ajuste —</td>
-      <td class="mono">R$ ${f2(s.atual.exc)}</td>
-      <td class="mono">R$ ${f2(s.atual.faixas.f100)}</td>
-      <td class="mono" style="color:var(--muted)">—</td>
-    </tr>`;
-    continue;
-  }
-
-  // Diagnóstico da praça
-  let diagClass='ok',diagTxt='✅ Ideal',kgBadgeCls='ideal';
-  if(s.alerta){
-    if(s.alerta.tipo==='critico'){diagClass='critico';diagTxt=s.dv>0?'🔴 Muito acima — reduzir':'🔴 Muito abaixo — aumentar';kgBadgeCls='alto';}
-    else if(s.alerta.tipo==='atencao'){diagClass='atencao';diagTxt=s.dv>0?'🟡 Acima — pode reduzir':'🟡 Abaixo — ajustar';kgBadgeCls='baixo';}
-  }
-  if(s.dv<-1)kgBadgeCls='baixo';
-  else if(s.dv>1)kgBadgeCls='alto';
-
-  // KG simulado badge
-  let kgSimBadge='—';
-  if(kgSim&&s.ki){
-    const dvSim=((kgSim-s.ki)/s.ki)*100;
-    const simCls=Math.abs(dvSim)<=5?'ideal':dvSim>0?'alto':'baixo';
-    const simSeta=Math.abs(dvSim)<=5?'✅':dvSim>0?'▲':'▼';
-    kgSimBadge=`<strong>R$ ${f3(kgSim)}</strong><span class="kg-badge ${simCls}">${simSeta} ${Math.abs(dvSim).toFixed(1)}%</span>`;
-  }
-
-  const sldCls=pctAtual>0?'pos':pctAtual<0?'neg':'zero';
-  const sldTxt=pctAtual===0?'0%':(pctAtual>0?'+':'')+pctAtual+'%';
-  const rowBg=diagClass==='critico'?'row-critico':diagClass==='atencao'?'row-atencao':'row-ok';
-
-  html+=`<tr class="${rowBg}" id="row-${s.praca}">
-    <td><strong>${s.praca}</strong><br><span style="font-size:10px;color:var(--muted)">${s.uf}${s.pcMed?' · '+s.pcMed.toFixed(0)+' kg/emb':''}</span></td>
-    <td class="mono">${s.kfAtual?'R$ '+f3(s.kfAtual):'—'}</td>
-    <td class="mono">${s.ki?'R$ '+f3(s.ki):'—'}</td>
-    <td><span class="alerta-tag ${diagClass}" style="white-space:nowrap">${diagTxt}</span></td>
-    <td>
-      <div class="slider-wrap">
-        <div class="slider-row">
-          <button class="step-btn" onclick="stepSlider('${s.praca}',-1)" title="-1%">−</button>
-          <span class="slider-lbl">-30%</span>
-          <input type="range" class="adj-slider" id="sl-${s.praca}"
-            min="-30" max="30" step="1" value="${pctAtual}"
-            oninput="onSlider('${s.praca}',this.value)">
-          <span class="slider-lbl">+30%</span>
-          <button class="step-btn" onclick="stepSlider('${s.praca}',1)" title="+1%">+</button>
-          <span class="slider-pct ${sldCls}" id="spct-${s.praca}">${sldTxt}</span>
+      <td class="mono" style="${dvCor}">${dvTxt}</td>
+      <td>
+        <div style="display:flex;align-items:center;gap:4px">
+          <input type="number" class="param-input" style="width:64px;padding:5px 7px;font-size:12px"
+            id="pct-${s.praca}" value="${pctAtual}" step="1" min="-30" max="30"
+            onchange="onPctInput('${s.praca}',this.value)">
+          <span style="font-size:11px;color:var(--muted)">%</span>
         </div>
-      </div>
-    </td>
-    <td class="mono" id="exc-${s.praca}">R$ ${f2(adj.exc)}</td>
-    <td class="mono" id="f100-${s.praca}">R$ ${f2(adj.faixas.f100)}</td>
-    <td class="mono" id="kgsim-${s.praca}">${kgSimBadge}</td>
-  </tr>`;
-}
+        <div style="font-size:9px;color:var(--muted);margin-top:2px" id="kgsim-${s.praca}">${kgSim?'Simul.: R$ '+f3(kgSim)+'/kg':''}</div>
+      </td>
+      <td>${diagBadge}</td>
+    </tr>`;
+  }
 
   html+=`</tbody></table></div>`;
   html+=`<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;font-size:11px">
     <span><span class="alerta-tag critico">🔴</span> Desvio &gt;20%</span>
     <span><span class="alerta-tag atencao">🟡</span> Desvio 5–20%</span>
     <span><span class="alerta-tag ok">✅</span> Desvio ≤5%</span>
-    <span style="margin-left:8px;color:var(--muted)">Slider: ajuste % aplicado sobre o Exc/Ton da tabela gerencial (já posicionado no valor sugerido para atingir o KG Ideal)</span>
+    <span style="margin-left:8px;color:var(--muted)">% aplicado sobre o Exc/Ton da tabela gerencial. Praças "simuladas" usam a média geral de peso/NF de todas as praças com volumetria.</span>
   </div>`;
 
   // ── PARÂMETROS GERAIS (editáveis pelo ADM, com valor padrão da tabela gerencial)
@@ -1345,20 +1363,15 @@ for(const s of sugsOrdenadas){
   document.getElementById('m-detalhe').classList.remove('hidden');
 }
 
-// ── Botões de incremento/decremento de 1% (mais preciso que arrastar a barra)
-function stepSlider(praca, delta){
-  const el=document.getElementById('sl-'+praca);
-  if(!el) return;
-  let novoVal=parseInt(el.value)+delta;
-  novoVal=Math.max(-30,Math.min(30,novoVal));
-  el.value=novoVal;
-  onSlider(praca, novoVal);
-}
-
-// ── Atualiza linha ao mover slider
-function onSlider(praca, val){
-  const pct=parseFloat(val);
+// ── Atualiza linha ao digitar o % de ajuste no campo numérico
+function onPctInput(praca, val){
+  let pct=parseFloat(val);
+  if(isNaN(pct)) pct=0;
+  pct=Math.max(-30,Math.min(30,pct));
   _ajustesAtivos[praca]=pct;
+
+  const elInput=document.getElementById('pct-'+praca);
+  if(elInput) elInput.value=pct;
 
   const sug=_sugsCached[praca];
   if(!sug) return;
@@ -1366,21 +1379,8 @@ function onSlider(praca, val){
   const adj=aplicarAjuste(sug,pct);
   const kgSim=simKgAdj(sug,adj);
 
-  // Atualiza cells da linha
-  const sldCls=pct>0?'pos':pct<0?'neg':'zero';
-  const elPct=document.getElementById('spct-'+praca);
-  if(elPct){elPct.textContent=pct===0?'0%':(pct>0?'+':'')+pct+'%';elPct.className='slider-pct '+sldCls;}
-  const elExc=document.getElementById('exc-'+praca);
-  if(elExc)elExc.textContent='R$ '+adj.exc.toFixed(2);
-  const elF100=document.getElementById('f100-'+praca);
-  if(elF100)elF100.textContent='R$ '+adj.faixas.f100.toFixed(2);
   const elKg=document.getElementById('kgsim-'+praca);
-  if(elKg&&kgSim&&sug.ki){
-    const dvSim=((kgSim-sug.ki)/sug.ki)*100;
-    const simCls=Math.abs(dvSim)<=5?'ideal':dvSim>0?'alto':'baixo';
-    const simSeta=Math.abs(dvSim)<=5?'✅':dvSim>0?'▲':'▼';
-    elKg.innerHTML=`<strong>R$ ${kgSim.toFixed(3)}</strong><span class="kg-badge ${simCls}">${simSeta} ${Math.abs(dvSim).toFixed(1)}%</span>`;
-  }
+  if(elKg) elKg.textContent = kgSim ? 'Simul.: R$ '+kgSim.toFixed(3)+'/kg' : '';
 
   // Atualiza KG ponderado global
   const sugsArr=Object.values(_sugsCached);
