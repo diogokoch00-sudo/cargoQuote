@@ -111,6 +111,14 @@ tbody td{padding:8px 11px;border-bottom:1px solid var(--border);vertical-align:m
 .alerta-tag.ok{background:#D1FAE5;color:#065F46;border:1px solid #A7F3D0;}
 .regiao-cell{background:#EEF2F9 !important;font-weight:700;color:var(--navy);vertical-align:middle;text-align:center;border-right:1px solid var(--border);font-size:12px;letter-spacing:.3px;}
 .uf-cell{font-weight:700;color:var(--navy);vertical-align:middle;text-align:center;border-right:1px solid var(--border);font-size:12px;}
+.mem-toggle{font-size:9px;color:var(--blue);cursor:pointer;text-decoration:underline;display:inline-block;margin-top:1px;}
+.mem-toggle:hover{color:var(--navy);}
+.mem-box{padding:12px 18px;font-size:11px;color:var(--text);}
+.mem-box table{width:100%;font-size:10px;margin-top:6px;}
+.mem-box table th{background:var(--light);color:var(--navy);padding:4px 6px;text-align:left;font-weight:700;}
+.mem-box table td{padding:3px 6px;border-bottom:1px solid var(--border);}
+.mem-step{display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px dashed var(--border);}
+.mem-step:last-child{border-bottom:none;font-weight:700;color:var(--navy);}
 .sug-header{background:linear-gradient(135deg,#0F2240,#7C3AED);border-radius:12px;padding:20px 24px;color:#fff;margin-bottom:16px;}
 .sug-meta{display:flex;gap:12px;margin-top:12px;flex-wrap:wrap;}
 .sug-meta-item{background:rgba(255,255,255,.1);border-radius:8px;padding:8px 14px;}
@@ -507,7 +515,7 @@ function gP(c,u){const b=PM[u.toUpperCase()];if(!b)return null;const p=b.replace
 const COEF_F100=130.5;
 function calcFaixas(exc){const t=exc/1000;const f5=t*30,f10=f5*1.35,f20=f10+t*10,f30=f20+t*10,f50=f30+t*20,f70=f50+t*20,f100=f70+t*30;return{f5,f10,f20,f30,f50,f70,f100};}
 function cF(pr,cu,nf,pc,uf){const t=TAB[pc];if(!t)return null;const w=Math.max(pr,cu*300);let fp;if(w<=5)fp=t.f5;else if(w<=10)fp=t.f10;else if(w<=20)fp=t.f20;else if(w<=30)fp=t.f30;else if(w<=50)fp=t.f50;else if(w<=70)fp=t.f70;else if(w<=100)fp=t.f100;else fp=t.f100+((w-100)*(t.exc/1000));const fvA=Math.max(nf*t.fv,9.14),grA=Math.max(nf*t.gr,10.08),ped=Math.ceil(w/100)*14.85,sub=fp+fvA+grA+6.31+ped+t.d,ff=sub/dICMS(uf);return{w,fp,fvA,grA,ped,desp:t.d,sub,ff,kg:w>100.01?ff/w:null,ok:w>100.01};}
-function processar(embs){const res=embs.map(r=>{const p=gP(r.c,r.u);if(!p)return{...r,err:1};const c=cF(r.pr,r.cu,r.nf,p,r.u);return c?{...r,p,...c}:{...r,err:1};});const val=res.filter(r=>!r.err);const byP={};for(const r of val){if(!byP[r.p])byP[r.p]={p:r.p,u:r.u,eT:0,eA:0,rT:0,rA:0,wA:0,nfT:0,somFP:0,somFV:0,somGR:0,somPed:0,somDesp:0};byP[r.p].eT++;byP[r.p].rT+=r.ff;byP[r.p].nfT+=r.nf;byP[r.p].somFP+=r.fp;byP[r.p].somFV+=r.fvA;byP[r.p].somGR+=r.grA;byP[r.p].somPed+=r.ped;byP[r.p].somDesp+=r.desp;if(r.ok){byP[r.p].eA++;byP[r.p].rA+=r.ff;byP[r.p].wA+=r.w;}}const ps=Object.values(byP).sort((a,b)=>b.rT-a.rT);const ac=val.filter(r=>r.ok),rA=ac.reduce((s,r)=>s+r.ff,0),wA=ac.reduce((s,r)=>s+r.w,0),nfT=val.reduce((s,r)=>s+r.nf,0),wT=val.reduce((s,r)=>s+r.pr,0);return{ps,n:val.length,na:ac.length,rT:val.reduce((s,r)=>s+r.ff,0),wT,nfT,kg:wA>0?rA/wA:0,va:wT>0?nfT/wT:0,ds:val.length>0?wT/val.length:0};}
+function processar(embs){const res=embs.map(r=>{if(UFS_EXCLUIDAS.includes((r.u||'').toUpperCase()))return{...r,err:1};const p=gP(r.c,r.u);if(!p)return{...r,err:1};const c=cF(r.pr,r.cu,r.nf,p,r.u);return c?{...r,p,...c}:{...r,err:1};});const val=res.filter(r=>!r.err);const byP={};for(const r of val){if(!byP[r.p])byP[r.p]={p:r.p,u:r.u,eT:0,eA:0,rT:0,rA:0,wA:0,nfT:0,somFP:0,somFV:0,somGR:0,somPed:0,somDesp:0};byP[r.p].eT++;byP[r.p].rT+=r.ff;byP[r.p].nfT+=r.nf;byP[r.p].somFP+=r.fp;byP[r.p].somFV+=r.fvA;byP[r.p].somGR+=r.grA;byP[r.p].somPed+=r.ped;byP[r.p].somDesp+=r.desp;if(r.ok){byP[r.p].eA++;byP[r.p].rA+=r.ff;byP[r.p].wA+=r.w;}}const ps=Object.values(byP).sort((a,b)=>b.rT-a.rT);const ac=val.filter(r=>r.ok),rA=ac.reduce((s,r)=>s+r.ff,0),wA=ac.reduce((s,r)=>s+r.w,0),nfT=val.reduce((s,r)=>s+r.nf,0),wT=val.reduce((s,r)=>s+r.pr,0);return{ps,n:val.length,na:ac.length,rT:val.reduce((s,r)=>s+r.ff,0),wT,nfT,kg:wA>0?rA/wA:0,va:wT>0?nfT/wT:0,ds:val.length>0?wT/val.length:0};}
 function classAlerta(kf,ki){if(!kf||!ki)return null;const dv=((kf-ki)/ki)*100;if(Math.abs(dv)<=5)return{tipo:'ok',dv,msg:'Dentro da faixa ideal (±5%)'};if(dv>5){if(dv>20)return{tipo:'critico',dv,msg:`⚠️ TABELA PADRÃO NÃO IDEAL — KG Final ${kf.toFixed(3)} está ${dv.toFixed(1)}% ACIMA do ideal.`};return{tipo:'atencao',dv,msg:`⚠️ Tabela fora do ideal — KG Final ${kf.toFixed(3)} está ${dv.toFixed(1)}% acima.`};}if(dv<-20)return{tipo:'critico',dv,msg:`⚠️ TABELA PADRÃO NÃO IDEAL — KG Final ${kf.toFixed(3)} está ${Math.abs(dv).toFixed(1)}% ABAIXO do ideal.`};return{tipo:'atencao',dv,msg:`⚠️ Tabela fora do ideal — KG Final ${kf.toFixed(3)} está ${Math.abs(dv).toFixed(1)}% abaixo.`};}
 function resumoAlertas(ps){const criticos=[],atencao=[],ok=[];for(const p of ps){const kf=p.wA>0?p.rA/p.wA:null,ki=KGI[p.p]||null;const al=classAlerta(kf,ki);if(!al)continue;if(al.tipo==='critico')criticos.push(p.p);else if(al.tipo==='atencao')atencao.push(p.p);else ok.push(p.p);}return{criticos,atencao,ok};}
 function gerarSugestoes(sol){
@@ -1205,6 +1213,91 @@ function calcKgPonderado(sugs, ajustes){
 
 let _solAtual=null;
 
+// ════ MEMÓRIA DE CÁLCULO POR PRAÇA ════
+function toggleMemoria(praca){
+  const row=document.getElementById('mem-'+praca);
+  const link=document.getElementById('mem-toggle-'+praca);
+  if(!row) return;
+  const aberta=row.style.display!=='none';
+  row.style.display=aberta?'none':'table-row';
+  if(link) link.textContent=aberta?'ⓘ Ver memória de cálculo':'▲ Ocultar memória de cálculo';
+}
+
+function _renderMemoriaCalculo(sol,sug,adj){
+  const f2=n=>n.toFixed(2),f3=n=>n.toFixed(3);
+  const divisor=dICMS(sug.uf||'GO');
+
+  if(sug.temVolumetria){
+    // ── Reconstrói, a partir dos embarques brutos (sol.vol), quais pertencem a esta praça
+    const embsDaPraca=(sol.vol||[]).map(r=>{
+      const p=gP(r.c,r.u);
+      if(p!==sug.praca) return null;
+      const c=cF(r.pr,r.cu,r.nf,p,r.u);
+      return c?{...r,...c}:null;
+    }).filter(Boolean);
+
+    const validos=embsDaPraca.filter(e=>e.ok);
+    const linhasEmb=embsDaPraca.map(e=>`<tr>
+        <td>${e.c}</td><td>${e.pr.toFixed(0)} kg</td><td>${e.cu.toFixed(2)} m³</td><td>R$ ${f2(e.nf)}</td>
+        <td>${f2(e.w)} kg</td><td>${e.ok?'R$ '+f3(e.kg):'<span style="color:var(--muted)">excluído (&le;100kg)</span>'}</td>
+      </tr>`).join('');
+
+    const pesoMed=sug.pcMed?f2(sug.pcMed):'—';
+    const nfMedPraca=validos.length>0?validos.reduce((s,e)=>s+e.nf,0)/validos.length:0;
+
+    return `<div class="mem-box">
+      <div style="font-weight:700;color:var(--navy);margin-bottom:6px">📐 Memória de cálculo — ${sug.praca} (dados reais do cliente)</div>
+      <div style="margin-bottom:8px;color:var(--muted)">Embarques informados na volumetria que caíram nesta praça (peso considerado = maior entre Peso Real e Cubagem × 300):</div>
+      <table><thead><tr><th>Cidade</th><th>Peso Real</th><th>Cubagem</th><th>NF</th><th>Peso Considerado</th><th>KG Final do embarque</th></tr></thead>
+        <tbody>${linhasEmb}</tbody></table>
+      <div style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:14px">
+        <div>
+          <div class="mem-step"><span>Embarques na praça</span><span>${embsDaPraca.length}</span></div>
+          <div class="mem-step"><span>Embarques válidos (&gt;100kg)</span><span>${validos.length}</span></div>
+          <div class="mem-step"><span>Peso médio dos válidos</span><span>${pesoMed} kg</span></div>
+          <div class="mem-step"><span>NF médio dos válidos</span><span>R$ ${f2(nfMedPraca)}</span></div>
+        </div>
+        <div>
+          <div class="mem-step"><span>Exc/Ton aplicado (com ajuste de ${sug._pct||(_ajustesAtivos[sug.praca]||0)}%)</span><span>R$ ${f2(adj.exc)}</span></div>
+          <div class="mem-step"><span>Frete Valor (mín. R$ 9,14)</span><span>R$ ${f2(Math.max(nfMedPraca*adj.fv,9.14))}</span></div>
+          <div class="mem-step"><span>GRIS (mín. R$ 10,08)</span><span>R$ ${f2(Math.max(nfMedPraca*adj.gr,10.08))}</span></div>
+          <div class="mem-step"><span>TAS + Pedágio + Despacho</span><span>R$ ${f2(6.31+Math.ceil((sug.pcMed||0)/100)*14.85+adj.d)}</span></div>
+          <div class="mem-step"><span>÷ divisor ICMS (${sug.uf})</span><span>÷ ${divisor}</span></div>
+          <div class="mem-step"><span>KG Final ponderado da praça</span><span>${sug.kfAtual?'R$ '+f3(sug.kfAtual)+'/kg':'—'}</span></div>
+        </div>
+      </div>
+    </div>`;
+  } else {
+    // ── Praça simulada: explica de onde vieram as médias gerais usadas
+    const r=sol.res;
+    const origemPracas=(r.ps||[]).filter(p=>p.eA>0&&!UFS_EXCLUIDAS.includes((p.u||'').toUpperCase()));
+    const linhasOrigem=origemPracas.map(p=>`<tr>
+        <td>${p.p}</td><td>${p.eA}</td><td>${f2(p.wA/p.eA)} kg</td><td>R$ ${f2(p.nfT/Math.max(p.eT,1))}</td>
+      </tr>`).join('');
+    const totalEmb=origemPracas.reduce((s,p)=>s+p.eA,0);
+
+    return `<div class="mem-box">
+      <div style="font-weight:700;color:var(--navy);margin-bottom:6px">📐 Memória de cálculo — ${sug.praca} <span style="font-weight:500;font-style:italic;color:var(--muted)">(simulado — sem volumetria própria do cliente)</span></div>
+      <div style="margin-bottom:8px;color:var(--muted)">Esta praça não teve embarques na volumetria enviada. O sistema simula um cenário hipotético usando a <strong>média geral</strong> de peso e NF por embarque de todas as outras praças que tiveram volumetria real nesta cotação:</div>
+      ${linhasOrigem?`<table><thead><tr><th>Praça de origem</th><th>Emb. válidos</th><th>Peso médio</th><th>NF médio</th></tr></thead><tbody>${linhasOrigem}</tbody></table>`:'<div style="color:var(--muted);font-style:italic">Nenhuma praça com volumetria válida nesta cotação para servir de base.</div>'}
+      <div style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:14px">
+        <div>
+          <div class="mem-step"><span>Total embarques válidos usados na média</span><span>${totalEmb}</span></div>
+          <div class="mem-step"><span>Peso médio geral (hipotético)</span><span>${sug.pcMed?f2(sug.pcMed):'—'} kg</span></div>
+          <div class="mem-step"><span>NF médio geral (hipotético)</span><span>R$ ${f2(sug.nfMedSimulado||0)}</span></div>
+        </div>
+        <div>
+          <div class="mem-step"><span>Exc/Ton da tabela gerencial (com ajuste de ${_ajustesAtivos[sug.praca]||0}%)</span><span>R$ ${f2(adj.exc)}</span></div>
+          <div class="mem-step"><span>Frete Valor (mín. R$ 9,14)</span><span>R$ ${f2(Math.max((sug.nfMedSimulado||0)*adj.fv,9.14))}</span></div>
+          <div class="mem-step"><span>GRIS (mín. R$ 10,08)</span><span>R$ ${f2(Math.max((sug.nfMedSimulado||0)*adj.gr,10.08))}</span></div>
+          <div class="mem-step"><span>÷ divisor ICMS (${sug.uf})</span><span>÷ ${divisor}</span></div>
+          <div class="mem-step"><span>KG Final simulado da praça</span><span>${sug.kfAtual?'R$ '+f3(sug.kfAtual)+'/kg':'—'}</span></div>
+        </div>
+      </div>
+    </div>`;
+  }
+}
+
 // ════ TABELA SUGERIDA COM SLIDERS ════
 function abrirTabela(solId){
   const sol=(window._sols||[]).find(s=>s.id===solId);
@@ -1308,11 +1401,13 @@ function _renderTabela(solId, sol, sugs){
     const borderCor = s.alerta?.tipo==='critico'?'var(--red)':s.alerta?.tipo==='atencao'?'var(--amber)':(s.alerta?.tipo==='ok'?'var(--green)':'transparent');
     const simTag = !s.temVolumetria ? '<br><span style="font-size:9px;color:var(--muted);font-style:italic">simulado (média geral)</span>' : '';
 
+    const memoriaId='mem-'+s.praca;
+
     html+=`<tr id="row-${s.praca}" style="background:${ufCor}">
       ${l._showRegiao?`<td rowspan="${l._regiaoSpan}" class="regiao-cell">${l.info[0]}</td>`:''}
       ${l._showUF?`<td rowspan="${l._ufSpan}" class="uf-cell" style="background:${ufCor}">${l.info[1]}</td>`:''}
       <td style="border-left:3px solid ${borderCor}">${l.info[2]}</td>
-      <td><strong>${s.praca}</strong>${simTag}</td>
+      <td><strong>${s.praca}</strong>${simTag}<br><span class="mem-toggle" onclick="toggleMemoria('${s.praca}')" id="mem-toggle-${s.praca}">ⓘ Ver memória de cálculo</span></td>
       <td class="mono">${kfExibir?'R$ '+f3(kfExibir):'—'}</td>
       <td class="mono">${s.ki?'R$ '+f3(s.ki):'—'}</td>
       <td class="mono" style="${dvCor}">${dvTxt}</td>
@@ -1326,6 +1421,9 @@ function _renderTabela(solId, sol, sugs){
         <div style="font-size:9px;color:var(--muted);margin-top:2px" id="kgsim-${s.praca}">${kgSim?'Simul.: R$ '+f3(kgSim)+'/kg':''}</div>
       </td>
       <td>${diagBadge}</td>
+    </tr>
+    <tr id="${memoriaId}" style="display:none">
+      <td colspan="9" style="background:#FBFCFE;padding:0">${_renderMemoriaCalculo(sol,s,adj)}</td>
     </tr>`;
   }
 
@@ -1383,6 +1481,13 @@ function onPctInput(praca, val){
 
   const elKg=document.getElementById('kgsim-'+praca);
   if(elKg) elKg.textContent = kgSim ? 'Simul.: R$ '+kgSim.toFixed(3)+'/kg' : '';
+
+  // Se a memória de cálculo desta praça estiver aberta, re-renderiza com o novo ajuste
+  const memRow=document.getElementById('mem-'+praca);
+  if(memRow && memRow.style.display!=='none' && _solAtual){
+    const memCell=memRow.querySelector('td');
+    if(memCell) memCell.innerHTML=_renderMemoriaCalculo(_solAtual,sug,adj);
+  }
 
   // Atualiza KG ponderado global
   const sugsArr=Object.values(_sugsCached);
