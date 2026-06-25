@@ -110,11 +110,10 @@ tbody td{padding:8px 11px;border-bottom:1px solid var(--border);vertical-align:m
 .alerta-tag.atencao{background:#FEF3C7;color:#92400E;border:1px solid #FDE68A;}
 .alerta-tag.ok{background:#D1FAE5;color:#065F46;border:1px solid #A7F3D0;}
 tr.row-critico td{background:#FFF5F5 !important;}
-tr.row-critico td:first-child{border-left:3px solid var(--red);}
 tr.row-atencao td{background:#FFFDF0 !important;}
-tr.row-atencao td:first-child{border-left:3px solid var(--amber);}
 tr.row-ok td{background:#F0FDF4 !important;}
-tr.row-ok td:first-child{border-left:3px solid var(--green);}
+.regiao-cell{background:#EEF2F9 !important;font-weight:700;color:var(--navy);vertical-align:middle;text-align:center;border-right:1px solid var(--border);font-size:12px;letter-spacing:.3px;}
+.uf-cell{background:#F6F8FC !important;font-weight:700;color:var(--navy);vertical-align:middle;text-align:center;border-right:1px solid var(--border);font-size:12px;}
 .sug-header{background:linear-gradient(135deg,#0F2240,#7C3AED);border-radius:12px;padding:20px 24px;color:#fff;margin-bottom:16px;}
 .sug-meta{display:flex;gap:12px;margin-top:12px;flex-wrap:wrap;}
 .sug-meta-item{background:rgba(255,255,255,.1);border-radius:8px;padding:8px 14px;}
@@ -1306,12 +1305,13 @@ function _renderTabela(solId, sol, sugs){
     const dvCor = kfExibir&&s.ki ? ((kfExibir-s.ki)>=0?'color:var(--red)':'color:var(--green)') : 'color:var(--muted)';
 
     const rowBg = s.alerta?.tipo==='critico'?'row-critico':s.alerta?.tipo==='atencao'?'row-atencao':(s.alerta?.tipo==='ok'?'row-ok':'');
+    const borderCor = s.alerta?.tipo==='critico'?'var(--red)':s.alerta?.tipo==='atencao'?'var(--amber)':(s.alerta?.tipo==='ok'?'var(--green)':'transparent');
     const simTag = !s.temVolumetria ? '<br><span style="font-size:9px;color:var(--muted);font-style:italic">simulado (média geral)</span>' : '';
 
     html+=`<tr class="${rowBg}" id="row-${s.praca}">
-      ${l._showRegiao?`<td rowspan="${l._regiaoSpan}" style="font-weight:700;background:#F8FAFF;vertical-align:middle">${l.info[0]}</td>`:''}
-      ${l._showUF?`<td rowspan="${l._ufSpan}" style="font-weight:700;background:#FAFBFD;vertical-align:middle;text-align:center">${l.info[1]}</td>`:''}
-      <td>${l.info[2]}</td>
+      ${l._showRegiao?`<td rowspan="${l._regiaoSpan}" class="regiao-cell">${l.info[0]}</td>`:''}
+      ${l._showUF?`<td rowspan="${l._ufSpan}" class="uf-cell">${l.info[1]}</td>`:''}
+      <td style="border-left:3px solid ${borderCor}">${l.info[2]}</td>
       <td><strong>${s.praca}</strong>${simTag}</td>
       <td class="mono">${kfExibir?'R$ '+f3(kfExibir):'—'}</td>
       <td class="mono">${s.ki?'R$ '+f3(s.ki):'—'}</td>
