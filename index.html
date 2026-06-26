@@ -456,6 +456,17 @@ input[type=range].adj-slider{flex:1;min-width:100px;accent-color:var(--blue);cur
   </div>
 </div>
 
+<!-- MODAL COTAÇÕES EM MASSA -->
+<div class="modal-overlay hidden" id="m-cotacoes">
+  <div class="modal">
+    <div class="modal-title" id="m-cot-title">Cotações em Massa</div>
+    <div id="m-cot-body"></div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary btn-sm" onclick="closeModal('m-cotacoes')">Fechar</button>
+    </div>
+  </div>
+</div>
+
 <!-- MODAL STATUS -->
 <div class="modal-overlay hidden" id="m-status">
   <div class="modal" style="max-width:380px">
@@ -823,7 +834,7 @@ function _startAutoRefresh(viewId){
   _stopAutoRefresh();
   _autoRefreshTimer=setInterval(()=>{
     // Não atualiza se algum modal estiver aberto (evita perder o que o ADM está ajustando)
-    const modalAberto=!document.getElementById('m-detalhe').classList.contains('hidden')||!document.getElementById('m-status').classList.contains('hidden');
+    const modalAberto=!document.getElementById('m-detalhe').classList.contains('hidden')||!document.getElementById('m-status').classList.contains('hidden')||!document.getElementById('m-cotacoes').classList.contains('hidden');
     if(modalAberto) return;
     if(viewId==='minhas') renderMinhas();
     if(viewId==='pipeline') renderPipeline();
@@ -1093,7 +1104,7 @@ async function renderMonitor(){
     const ac=al.criticos.length?`<span class="nao-ideal-pill critico">🔴 ${al.criticos.length} crítico${al.criticos.length>1?'s':''}</span> `:'';
     const at=al.atencao.length?`<span class="nao-ideal-pill">🟡 ${al.atencao.length} atenção</span> `:'';
     const ok=!al.criticos.length&&!al.atencao.length&&al.ok.length?`<span class="nao-ideal-pill ok">✅ Ideal</span>`:'';
-    return`<tr><td><span class="protocolo">${s.prot}</span></td><td><strong>${s.cli.razao}</strong><br><span style="font-size:10px;color:var(--muted)">${s.cli.cnpj}</span></td><td>${s.nV}${s.isAdm?'<span class="adm-badge">👑 ADM</span>':''}<br><span style="font-size:10px;color:var(--muted)">${s.eV}</span></td><td style="font-size:11px">${s.criadoEm}</td><td>${s.res.n}</td><td class="mono">${f(s.res.rT)}</td><td>${bs(s.status)}</td><td>${ac||at||ok||'<span style="font-size:11px;color:var(--muted)">—</span>'}</td><td><div style="display:flex;gap:4px;flex-wrap:wrap"><button class="btn btn-purple btn-sm" onclick="abrirTabela(${s.id})">✦ Tabela</button>${!s.isAdm?`<button class="btn btn-primary btn-sm" onclick="abrirSt(${s.id})">✏️</button>`:''}<button class="btn btn-danger btn-sm" onclick="remSolicitacao(${s.id})" title="Excluir solicitação">🗑️</button></div></td></tr>`;
+    return`<tr><td><span class="protocolo">${s.prot}</span></td><td><strong>${s.cli.razao}</strong><br><span style="font-size:10px;color:var(--muted)">${s.cli.cnpj}</span></td><td>${s.nV}${s.isAdm?'<span class="adm-badge">👑 ADM</span>':''}<br><span style="font-size:10px;color:var(--muted)">${s.eV}</span></td><td style="font-size:11px">${s.criadoEm}</td><td>${s.res.n}</td><td class="mono">${f(s.res.rT)}</td><td>${bs(s.status)}</td><td>${ac||at||ok||'<span style="font-size:11px;color:var(--muted)">—</span>'}</td><td><div style="display:flex;gap:4px;flex-wrap:wrap"><button class="btn btn-purple btn-sm" onclick="abrirTabela(${s.id})">✦ Tabela</button><button class="btn btn-sm" style="background:var(--blue);color:#fff" onclick="abrirCotacoes(${s.id})">📦 Cotações</button>${!s.isAdm?`<button class="btn btn-primary btn-sm" onclick="abrirSt(${s.id})">✏️</button>`:''}<button class="btn btn-danger btn-sm" onclick="remSolicitacao(${s.id})" title="Excluir solicitação">🗑️</button></div></td></tr>`;
   }).join('');
 }
 
@@ -1232,6 +1243,138 @@ function toggleMemoria(praca){
   const aberta=row.style.display!=='none';
   row.style.display=aberta?'none':'table-row';
   if(link) link.textContent=aberta?'ⓘ Ver memória de cálculo':'▲ Ocultar memória de cálculo';
+}
+
+// ════ COTAÇÕES EM MASSA (por embarque, a partir da volumetria) ════
+function _fmtCot(n){return new Intl.NumberFormat('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}).format(n||0);}
+
+// Recalcula a cotação individual de cada embarque da volumetria usando a tabela
+// gerencial de referência (mesma base do mass-quote do envio). Não aplica slider.
+function _cotacoesEmbarques(sol){
+  return (sol.vol||[]).map((r,i)=>{
+    const idx=i+1;
+    const uf=(r.u||'').toUpperCase();
+    if(UFS_EXCLUIDAS.includes(uf)) return {...r,idx,erro:'UF fora de operação ('+uf+')'};
+    const p=gP(r.c,r.u);
+    if(!p||!TAB[p]) return {...r,idx,erro:'Praça não encontrada'};
+    const c=cF(r.pr,r.cu,r.nf,p,r.u);
+    if(!c) return {...r,idx,erro:'Erro no cálculo'};
+    return {...r,idx,p,...c};
+  });
+}
+
+// Memória de cálculo completa de um único embarque.
+function _memCotEmbarque(e){
+  const f2=n=>_fmtCot(n), f3=n=>(n||0).toFixed(3);
+  const t=TAB[e.p]||{};
+  const cub300=(e.cu||0)*300;
+  const fvPct=((t.fv||0)*100).toFixed(2).replace('.',',');
+  const grPct=((t.gr||0)*100).toFixed(2).replace('.',',');
+  const div=dICMS(e.u);
+  const fracoes=Math.ceil((e.w||0)/100);
+  return `<div class="mem-box">
+    <div style="font-weight:700;color:var(--navy);margin-bottom:8px">📐 Memória de cálculo — ${e.c} (${e.u}) · Praça ${e.p}</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+      <div>
+        <div class="mem-step"><span>Peso Real</span><span>${f2(e.pr)} kg</span></div>
+        <div class="mem-step"><span>Cubagem × 300</span><span>${f2(e.cu)} m³ × 300 = ${f2(cub300)} kg</span></div>
+        <div class="mem-step"><span>Peso Considerado (maior)</span><span>${f2(e.w)} kg</span></div>
+        <div class="mem-step"><span>Frete Peso (faixa)</span><span>R$ ${f2(e.fp)}</span></div>
+        <div class="mem-step"><span>FV (${fvPct}% NF · mín 9,14)</span><span>R$ ${f2(e.fvA)}</span></div>
+        <div class="mem-step"><span>GRIS (${grPct}% NF · mín 10,08)</span><span>R$ ${f2(e.grA)}</span></div>
+      </div>
+      <div>
+        <div class="mem-step"><span>Pedágio (${fracoes} × 14,85)</span><span>R$ ${f2(e.ped)}</span></div>
+        <div class="mem-step"><span>TAS (fixo por CT-e)</span><span>R$ 6,31</span></div>
+        <div class="mem-step"><span>Despacho</span><span>R$ ${f2(e.desp)}</span></div>
+        <div class="mem-step"><span>Subtotal</span><span>R$ ${f2(e.sub)}</span></div>
+        <div class="mem-step"><span>÷ divisor ICMS (${e.u})</span><span>÷ ${div}</span></div>
+        <div class="mem-step"><span>Frete Final</span><span>R$ ${f2(e.ff)}</span></div>
+        <div class="mem-step"><span>KG Final</span><span>${e.ok?'R$ '+f3(e.kg)+' /kg':'— (≤100kg, não conta)'}</span></div>
+      </div>
+    </div>
+  </div>`;
+}
+
+function abrirCotacoes(solId){
+  const sol=(window._sols||[]).find(s=>s.id===solId);
+  if(!sol)return;
+  document.getElementById('m-cot-title').innerHTML=`📦 Cotações em Massa <span style="font-size:12px;color:var(--muted);font-weight:500">— ${sol.prot} · ${sol.cli.razao}</span>`;
+  const body=document.getElementById('m-cot-body');
+
+  if(sol.semVolumetria||!(sol.vol&&sol.vol.length)){
+    body.innerHTML=`<div class="mem-box" style="text-align:center;padding:34px"><div style="font-size:13px;color:var(--muted)">ℹ️ Esta solicitação foi gerada <strong>sem volumetria do cliente</strong> — não há cotações individuais por embarque para exibir.</div></div>`;
+    document.getElementById('m-cotacoes').classList.remove('hidden');
+    return;
+  }
+
+  const embs=_cotacoesEmbarques(sol);
+  const f2=n=>_fmtCot(n), f3=n=>(n||0).toFixed(3);
+  const validos=embs.filter(e=>!e.erro&&e.ok).length;
+  const totalFF=embs.filter(e=>!e.erro).reduce((s,e)=>s+e.ff,0);
+
+  const linhas=embs.map(e=>{
+    if(e.erro){
+      return `<tr style="background:#FFF5F5"><td>${e.idx}</td><td>${e.c}</td><td>${e.u}</td><td colspan="7" style="color:var(--red)">⚠️ ${e.erro}</td><td>—</td></tr>`;
+    }
+    return `<tr>
+      <td>${e.idx}</td><td>${e.c}</td><td>${e.u}</td><td>${e.p}</td>
+      <td>${f2(e.pr)}</td><td>${f2(e.cu)}</td><td>R$ ${f2(e.nf)}</td><td>${f2(e.w)}</td>
+      <td><strong>R$ ${f2(e.ff)}</strong></td>
+      <td>${e.ok?'R$ '+f3(e.kg):'<span style="color:var(--muted)">≤100kg</span>'}</td>
+      <td><span id="cotlink-${e.idx}" onclick="toggleCotMem(${e.idx})" style="cursor:pointer;color:var(--blue);font-weight:600;white-space:nowrap">ⓘ ver</span></td>
+    </tr>
+    <tr id="cotmem-${e.idx}" style="display:none"><td colspan="11" style="padding:0;background:var(--light)">${_memCotEmbarque(e)}</td></tr>`;
+  }).join('');
+
+  body.innerHTML=`
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:10px">
+      <div style="font-size:12px;color:var(--muted)"><strong>${embs.length}</strong> embarques · <strong>${validos}</strong> válidos (&gt;100kg) · Receita total: <strong style="color:var(--navy)">R$ ${f2(totalFF)}</strong></div>
+      <button class="btn btn-success btn-sm" onclick="exportarCotacoesExcel(${sol.id})">⬇ Exportar Excel</button>
+    </div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:10px">Cotações geradas a partir da volumetria do cliente usando a tabela gerencial de referência (LTL). Clique em <strong>ⓘ ver</strong> para abrir a memória de cálculo de cada embarque.</div>
+    <div class="result-wrap">
+      <table style="font-size:11px">
+        <thead><tr><th>#</th><th>Cidade</th><th>UF</th><th>Praça</th><th>Peso Real</th><th>Cubagem</th><th>NF</th><th>Peso Cons.</th><th>Frete Final</th><th>KG Final</th><th>Memória</th></tr></thead>
+        <tbody>${linhas}</tbody>
+      </table>
+    </div>`;
+  document.getElementById('m-cotacoes').classList.remove('hidden');
+}
+
+function toggleCotMem(idx){
+  const row=document.getElementById('cotmem-'+idx);
+  const link=document.getElementById('cotlink-'+idx);
+  if(!row)return;
+  const aberta=row.style.display!=='none';
+  row.style.display=aberta?'none':'table-row';
+  if(link)link.textContent=aberta?'ⓘ ver':'▲ ocultar';
+}
+
+function exportarCotacoesExcel(solId){
+  const sol=(window._sols||[]).find(s=>s.id===solId);
+  if(!sol){showToast('Solicitação não encontrada.');return;}
+  if(typeof XLSX==='undefined'){showToast('Biblioteca de Excel indisponível.');return;}
+  if(sol.semVolumetria||!(sol.vol&&sol.vol.length)){showToast('Esta solicitação não possui volumetria.');return;}
+  const r2=n=>Math.round((n||0)*100)/100, r3=n=>Math.round((n||0)*1000)/1000;
+  const embs=_cotacoesEmbarques(sol);
+  const aoa=[];
+  aoa.push(['CargoQuote — Cotações em Massa']);
+  aoa.push(['Protocolo',sol.prot,'','Cliente',sol.cli.razao]);
+  aoa.push(['CNPJ',sol.cli.cnpj,'','Data',sol.criadoEm]);
+  aoa.push(['Embarques',embs.length]);
+  aoa.push([]);
+  aoa.push(['#','Cidade','UF','Praça','Peso Real (kg)','Cubagem (m³)','NF (R$)','Peso Cons. (kg)','Frete Peso','FV','GRIS','Pedágio','TAS','Despacho','Subtotal','Divisor ICMS','Frete Final','KG Final','Status']);
+  embs.forEach(e=>{
+    if(e.erro){aoa.push([e.idx,e.c,e.u,'—',r2(e.pr),r2(e.cu),r2(e.nf),'','','','','','','','','','','',e.erro]);return;}
+    aoa.push([e.idx,e.c,e.u,e.p,r2(e.pr),r2(e.cu),r2(e.nf),r2(e.w),r2(e.fp),r2(e.fvA),r2(e.grA),r2(e.ped),6.31,r2(e.desp),r2(e.sub),dICMS(e.u),r2(e.ff),e.ok?r3(e.kg):'',e.ok?'Válido (>100kg)':'Excluído (≤100kg)']);
+  });
+  const ws=XLSX.utils.aoa_to_sheet(aoa);
+  ws['!cols']=[{wch:5},{wch:18},{wch:5},{wch:7},{wch:13},{wch:12},{wch:12},{wch:13},{wch:11},{wch:10},{wch:10},{wch:10},{wch:8},{wch:10},{wch:11},{wch:12},{wch:11},{wch:10},{wch:18}];
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,'Cotações');
+  XLSX.writeFile(wb,`Cotacoes_${sol.prot}.xlsx`);
+  showToast('✅ Excel das cotações baixado!');
 }
 
 function _renderMemoriaCalculo(sol,sug,adj){
@@ -2044,6 +2187,7 @@ function showToast(msg){const t=document.getElementById('toast');t.textContent=m
 function gv(id){const el=document.getElementById(id);return el?el.value.trim():'';}
 
 document.getElementById('m-detalhe').addEventListener('click',e=>{if(e.target===e.currentTarget)closeModal('m-detalhe');});
+document.getElementById('m-cotacoes').addEventListener('click',e=>{if(e.target===e.currentTarget)closeModal('m-cotacoes');});
 document.getElementById('m-status').addEventListener('click',e=>{if(e.target===e.currentTarget)closeModal('m-status');});
 document.getElementById('f_cnpj').addEventListener('input',function(){let v=this.value.replace(/\D/g,'').slice(0,14);if(v.length>12)v=v.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/,'$1.$2.$3/$4-$5');else if(v.length>8)v=v.replace(/(\d{2})(\d{3})(\d{3})(\d+)/,'$1.$2.$3/$4');else if(v.length>5)v=v.replace(/(\d{2})(\d{3})(\d+)/,'$1.$2.$3');else if(v.length>2)v=v.replace(/(\d{2})(\d+)/,'$1.$2');this.value=v;});
 
