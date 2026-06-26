@@ -1308,14 +1308,10 @@ function abrirCotacoes(solId){
     return;
   }
 
-  const embs=_cotacoesEmbarques(sol).filter(e=>!e.erro&&e.ok);
+  const embs=_cotacoesEmbarques(sol);
   const f2=n=>_fmtCot(n), f3=n=>(n||0).toFixed(3);
-  if(!embs.length){
-    body.innerHTML=`<div class="mem-box" style="text-align:center;padding:34px"><div style="font-size:13px;color:var(--muted)">ℹ️ Nenhum embarque acima de <strong>100,01 kg</strong> nesta volumetria — não há cotações para exibir.</div></div>`;
-    document.getElementById('m-cotacoes').classList.remove('hidden');
-    return;
-  }
-  const totalFF=embs.reduce((s,e)=>s+e.ff,0);
+  const validos=embs.filter(e=>!e.erro&&e.ok).length;
+  const totalFF=embs.filter(e=>!e.erro).reduce((s,e)=>s+e.ff,0);
 
   const linhas=embs.map(e=>{
     if(e.erro){
@@ -1333,7 +1329,7 @@ function abrirCotacoes(solId){
 
   body.innerHTML=`
     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:10px">
-      <div style="font-size:12px;color:var(--muted)"><strong>${embs.length}</strong> cotações (&gt;100,01 kg) · Receita total: <strong style="color:var(--navy)">R$ ${f2(totalFF)}</strong></div>
+      <div style="font-size:12px;color:var(--muted)"><strong>${embs.length}</strong> embarques · <strong>${validos}</strong> com KG Final (&gt;100,01 kg) · Receita total: <strong style="color:var(--navy)">R$ ${f2(totalFF)}</strong></div>
       <button class="btn btn-success btn-sm" onclick="exportarCotacoesExcel(${sol.id})">⬇ Exportar Excel</button>
     </div>
     <div style="font-size:11px;color:var(--muted);margin-bottom:10px">Cotações geradas a partir da volumetria do cliente usando a tabela gerencial de referência (LTL). Clique em <strong>ⓘ ver</strong> para abrir a memória de cálculo de cada embarque.</div>
@@ -1361,13 +1357,12 @@ function exportarCotacoesExcel(solId){
   if(typeof XLSX==='undefined'){showToast('Biblioteca de Excel indisponível.');return;}
   if(sol.semVolumetria||!(sol.vol&&sol.vol.length)){showToast('Esta solicitação não possui volumetria.');return;}
   const r2=n=>Math.round((n||0)*100)/100, r3=n=>Math.round((n||0)*1000)/1000;
-  const embs=_cotacoesEmbarques(sol).filter(e=>!e.erro&&e.ok);
-  if(!embs.length){showToast('Nenhum embarque acima de 100,01 kg.');return;}
+  const embs=_cotacoesEmbarques(sol);
   const aoa=[];
-  aoa.push(['CargoQuote — Cotações em Massa (> 100,01 kg)']);
+  aoa.push(['CargoQuote — Cotações em Massa']);
   aoa.push(['Protocolo',sol.prot,'','Cliente',sol.cli.razao]);
   aoa.push(['CNPJ',sol.cli.cnpj,'','Data',sol.criadoEm]);
-  aoa.push(['Cotações (>100,01 kg)',embs.length]);
+  aoa.push(['Embarques',embs.length]);
   aoa.push([]);
   aoa.push(['#','Cidade','UF','Praça','Peso Real (kg)','Cubagem (m³)','NF (R$)','Peso Cons. (kg)','Frete Peso','FV','GRIS','Pedágio','TAS','Despacho','Subtotal','Divisor ICMS','Frete Final','KG Final','Status']);
   embs.forEach(e=>{
