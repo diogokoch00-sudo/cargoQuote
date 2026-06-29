@@ -5,6 +5,12 @@
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
 <title>Gestão Comercial - Diogo Koch</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<!-- Firebase (sincronização em nuvem entre dispositivos) -->
+<script src="https://www.gstatic.com/firebasejs/12.15.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.15.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.15.0/firebase-firestore-compat.js"></script>
+<!-- LZString: compacta a volumetria antes de gravar (cabe no limite de 1MB/doc) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.5.0/lz-string.min.js"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500&display=swap');
 :root{--navy:#0F2240;--blue:#1B4F8A;--accent:#FF6B35;--light:#F0F4FA;--border:#D8E2F0;--text:#1A2332;--muted:#6B7A99;--green:#00875A;--red:#D93025;--purple:#7C3AED;--amber:#D97706;}
@@ -495,13 +501,108 @@ const ADM_EMAIL='diogokoch00@gmail.com',ADM_NOME='Diogo Koch',SENHA_PAD='cargo@2
 
 function h(s){let n=0;for(let i=0;i<s.length;i++)n=(Math.imul(31,n)+s.charCodeAt(i))|0;return String(n);}
 
-// Storage com fallback localStorage
+// ════════════════════════════════════════════════════════════════
+//  STORAGE COMPARTILHADO
+//  Prioridade: Firebase Firestore (sincroniza entre dispositivos)
+//              → window.storage (Claude.ai) → localStorage (standalone)
+//  Sessão de login (lg/ls) é SEMPRE local — cada navegador a sua.
+// ════════════════════════════════════════════════════════════════
+
+// ▼▼▼ COLE AQUI A CONFIG DO SEU PROJETO FIREBASE ▼▼▼
+// (Firebase Console → Configurações do projeto → Seus apps → Configuração do SDK)
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyDR1FxKyTbety4zqP3EtwwRRYl98qHrbgk",
+  authDomain: "cargoquote-e6c84.firebaseapp.com",
+  projectId: "cargoquote-e6c84",
+  storageBucket: "cargoquote-e6c84.firebasestorage.app",
+  messagingSenderId: "639006088471",
+  appId: "1:639006088471:web:3f3b0c86bc747afd1d6b52"
+};
+// ▲▲▲ ────────────────────────────────────────── ▲▲▲
+
+let _fbDb=null,_fbReady=false;
+function _fbConfigured(){return FIREBASE_CONFIG.projectId && !FIREBASE_CONFIG.projectId.includes('SEU_');}
+async function _initFirebase(){
+  try{
+    if(!_fbConfigured()){console.info('[CargoQuote] Firebase não configurado — usando armazenamento local.');return false;}
+    if(typeof firebase==='undefined'){console.warn('[CargoQuote] SDK do Firebase não carregou.');return false;}
+    firebase.initializeApp(FIREBASE_CONFIG);
+    _fbDb=firebase.firestore();
+    await firebase.auth().signInAnonymously();
+    _fbReady=true;
+    console.info('[CargoQuote] ✅ Firebase conectado — sincronização em nuvem ativa.');
+    return true;
+  }catch(e){console.warn('[CargoQuote] Falha ao iniciar Firebase, usando local:',e&&e.message);return false;}
+}
+const _fbInitPromise=_initFirebase();
+
+// Compactação (volumetria grande cabe no limite de 1MB/doc do Firestore)
+function _zEnc(obj){
+  const s=JSON.stringify(obj);
+  if(typeof LZString!=='undefined'){return{z:LZString.compressToBase64(s)};}
+  return{j:s};
+}
+function _zDec(d){
+  if(!d)return null;
+  try{
+    if(d.z&&typeof LZString!=='undefined')return JSON.parse(LZString.decompressFromBase64(d.z));
+    if(d.j)return JSON.parse(d.j);
+  }catch(e){console.warn('[CargoQuote] erro ao decodificar doc',e);}
+  return null;
+}
+
+// Cache do que já foi gravado (permite gravar só o que mudou em cada save)
+let _solCache={};
+async function _fbLoadSols(){
+  const snap=await _fbDb.collection('sols').get();
+  const arr=[];
+  _solCache={};
+  snap.forEach(doc=>{
+    const s=_zDec(doc.data());
+    if(s){arr.push(s);_solCache[doc.id]=doc.data().z||doc.data().j||'';}
+  });
+  arr.sort((a,b)=>(b.id||0)-(a.id||0));
+  return arr;
+}
+async function _fbSaveSols(arr){
+  if(!Array.isArray(arr))arr=[];
+  const seen=new Set();
+  for(const s of arr){
+    const id=String(s.id);seen.add(id);
+    const enc=_zEnc(s);const sig=enc.z||enc.j||'';
+    if(_solCache[id]===sig)continue;            // inalterada → não regrava
+    await _fbDb.collection('sols').doc(id).set(Object.assign({prot:s.prot||'',status:s.status||'',eV:s.eV||'',up:Date.now()},enc));
+    _solCache[id]=sig;
+  }
+  for(const id of Object.keys(_solCache)){       // apaga as que sumiram do array
+    if(!seen.has(id)){await _fbDb.collection('sols').doc(id).delete();delete _solCache[id];}
+  }
+}
+async function _fbLoadDoc(k){
+  const d=await _fbDb.collection('meta').doc(k).get();
+  return d.exists?_zDec(d.data()):null;
+}
+async function _fbSaveDoc(k,v){
+  await _fbDb.collection('meta').doc(k).set(Object.assign({up:Date.now()},_zEnc(v)));
+}
+
 function hasCloudStorage(){return typeof window!=='undefined'&&window.storage&&typeof window.storage.get==='function';}
+
 async function sg(k){
+  await _fbInitPromise;
+  if(_fbReady){try{
+    if(k==='cq_sols')return await _fbLoadSols();
+    return await _fbLoadDoc(k);
+  }catch(e){console.warn('[CargoQuote] sg('+k+') Firebase falhou, fallback local:',e&&e.message);}}
   if(hasCloudStorage()){try{const r=await window.storage.get(k,true);return r?JSON.parse(r.value):null;}catch{}}
   try{const v=localStorage.getItem('cq_shared_'+k);return v?JSON.parse(v):null;}catch{return null;}
 }
 async function ss(k,v){
+  await _fbInitPromise;
+  if(_fbReady){try{
+    if(k==='cq_sols'){await _fbSaveSols(v);return;}
+    await _fbSaveDoc(k,v);return;
+  }catch(e){console.warn('[CargoQuote] ss('+k+') Firebase falhou, fallback local:',e&&e.message);}}
   if(hasCloudStorage()){try{await window.storage.set(k,JSON.stringify(v),true);return;}catch{}}
   try{localStorage.setItem('cq_shared_'+k,JSON.stringify(v));}catch{}
 }
