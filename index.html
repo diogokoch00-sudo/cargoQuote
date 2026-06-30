@@ -1925,6 +1925,9 @@ async function gerarPDF(sol, sugs){
 
     const f2=n=>'R$ '+n.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
     const pct=n=>(n*100).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})+'%';
+    // Formatos de percentual fiéis ao Excel: "0%" (sem decimais) e "0.00%" (2 decimais)
+    const pct0=n=>Math.round(n*100)+'%';
+    const pct2=n=>(n*100).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})+'%';
 
     // ── Monta linhas da tabela com mesclas de Região/UF (igual ao Excel)
     let lastRegiao='', lastUF='';
@@ -2013,11 +2016,14 @@ async function gerarPDF(sol, sugs){
       table.frete td.praca-cell{font-weight:bold;}
       table.frete tr:nth-child(even) td:not(.reg-cell):not(.uf-cell){background:#FBFBFB;}
       .pagebreak{page-break-before:always;}
-      table.gen{width:100%;border-collapse:collapse;font-size:7px;margin-bottom:6px;}
+      table.gen{width:100%;border-collapse:collapse;font-size:7px;margin-bottom:5px;}
       table.gen th{background:#1B4F8A;color:#fff;padding:3px;text-align:center;font-size:8px;}
-      table.gen td{border:1px solid #999;padding:2px 5px;}
+      table.gen td{border:1px solid #999;padding:1.5px 5px;}
       table.gen td.glabel{width:75%;}
       table.gen td.gval{text-align:right;font-weight:bold;width:25%;}
+      table.gen td.edit{background:#FFF6B3;}
+      table.gen td.nota{font-style:italic;color:#444;font-weight:normal;text-align:left;font-size:6.5px;}
+      table.gen td.sub{padding-left:14px;}
       .assinaturas{display:flex;justify-content:space-around;margin-top:30px;font-size:9px;}
       .assinaturas div{text-align:center;width:200px;border-top:1px solid #000;padding-top:4px;}
     </style></head><body>
@@ -2052,22 +2058,87 @@ async function gerarPDF(sol, sugs){
     <div class="pagebreak"></div>
 
     <table class="gen"><tr><th colspan="2">GENERALIDADES</th></tr>
-      <tr><td class="glabel">Frete Valor Mínimo</td><td class="gval">${f2(pGet('fv_min'))}</td></tr>
-      <tr><td class="glabel">GRIS Mínimo</td><td class="gval">${f2(pGet('gris_min'))}</td></tr>
-      <tr><td class="glabel">Pedágio - a cada 100kg ou fração</td><td class="gval">${f2(pGet('pedagio'))}</td></tr>
-      <tr><td class="glabel">TAS (Taxa de Administração SEFAZ) - por ct-e</td><td class="gval">${f2(pGet('tas'))}</td></tr>
-      <tr><td class="glabel">TDE (Taxa de Dificuldade de Entrega) - acréscimo sob frete original</td><td class="gval">${pct(pGet('tde'))}</td></tr>
-      <tr><td class="glabel">Razão da Cubagem - M3</td><td class="gval">${pGet('cubagem')}</td></tr>
-      <tr><td class="glabel">Taxa de Agendamento</td><td class="gval">${pct(pGet('taxa_agend'))}</td></tr>
-      <tr><td class="glabel">Agendamento Valor Mínimo</td><td class="gval">${f2(pGet('agend_min'))}</td></tr>
+      <tr><td class="glabel edit">Frete Valor Mínimo</td><td class="gval edit">${f2(pGet('fv_min'))}</td></tr>
+      <tr><td class="glabel edit">GRIS Mínimo</td><td class="gval edit">${f2(pGet('gris_min'))}</td></tr>
+      <tr><td class="glabel edit">Pedágio - a cada 100kg ou fração</td><td class="gval edit">${f2(pGet('pedagio'))}</td></tr>
+      <tr><td class="glabel edit">TAS (Taxa de Adminsitração SEFAZ) - por ct-e</td><td class="gval edit">${f2(pGet('tas'))}</td></tr>
+      <tr><td class="glabel">TDA (Taxa de Dificuldade de Acesso / Zona Rural - Consultar relação de destinos com seu comercial ou no site da Atual Cargas na área de clientes) - acréscimo sob frete original cobrado</td><td class="gval">—</td></tr>
+      <tr><td class="glabel nota" colspan="2">Sobre a TDA: Em se tratando de dificuldade de acesso, não podemos garantir que 100% das regiões estejam devidamente sistematizados, podendo sugir novas regiões que não estão comtempladas em nossas relação atual</td></tr>
+      <tr><td class="glabel edit">TDE (Taxa de Dificuldade de Entrega) - acréscimo sob frete original</td><td class="gval edit">${pct0(pGet('tde'))}</td></tr>
+      <tr><td class="glabel">TDE Mínimo</td><td class="gval">${f2(270.4676468)}</td></tr>
+      <tr><td class="glabel">TDE Fixo (Consultar relação de destinatários com seu comercial ou no site da Atual Cargas na área de clientes)</td><td class="gval">—</td></tr>
+      <tr><td class="glabel">TRT (Taxa de Restrição ao Trânsito) - acréscimo sob frete original</td><td class="gval">${pct0(0.2)}</td></tr>
+      <tr><td class="glabel">TRT Mínimo</td><td class="gval">${f2(21.65)}</td></tr>
+      <tr><td class="glabel">TRT Mínimo para as praças comerciais RJCP e SPCP</td><td class="gval">${f2(89.61)}</td></tr>
+      <tr><td class="glabel">EMEX (Taxa de Emergência Excepcional para situações de beligerância) - acréscimo sob frete original</td><td class="gval">${pct0(0.2)}</td></tr>
+      <tr><td class="glabel">EMEX Mínimo</td><td class="gval">${f2(89.61)}</td></tr>
+      <tr><td class="glabel">Permanência - por tonelada dia/fraçao</td><td class="gval">${f2(65)}</td></tr>
+      <tr><td class="glabel">Permanência Mínima</td><td class="gval">${f2(38.84224)}</td></tr>
+      <tr><td class="glabel">Seguro de Carga em Permanência:</td><td class="gval">${pct2(0.002)}</td></tr>
+      <tr><td class="glabel nota" colspan="2">Sobre a Permanência: Caracteriza-se por permanência da carga armazenada por mais de 4 dias corridos por vontade alheia ao transportador. Quando excedido o tempo de permanência, a cobrança ocorrerá de forma retroativa a todo o período, contanto a partir do prazo de entrega estabelecido</td></tr>
+      <tr><td class="glabel" rowspan="5">Estadia de Veículo (após a 3ª hora aguardando para efetivar a entrega com limite até às 20 hs)*</td><td class="gval sub" style="text-align:left;font-weight:normal">Veículo Leve (até 3.000 kg ou 10 m3): <strong style="float:right">${f2(777.93)}</strong></td></tr>
+      <tr><td class="gval sub" style="text-align:left;font-weight:normal">Toco (até 9.000 kg ou 30 m3): <strong style="float:right">${f2(942.487)}</strong></td></tr>
+      <tr><td class="gval sub" style="text-align:left;font-weight:normal">Truck: (até 12.000 kg ou 40 m3) <strong style="float:right">${f2(977.76)}</strong></td></tr>
+      <tr><td class="gval sub" style="text-align:left;font-weight:normal">Cavalo Mecânico + Carreta (até 27.000 kg ou 90 m3): <strong style="float:right">${f2(1663.158)}</strong></td></tr>
+      <tr><td class="gval sub" style="text-align:left;font-weight:normal">Carreta (até 27.000 kg ou 90 m3): <strong style="float:right">${f2(531.92)}</strong></td></tr>
+      <tr><td class="glabel nota" colspan="2">* Para os casos de diárias onde exista necessidade de pernoite do veículo no local da entrega, será cobrado um valor adicional de 50% do custo original da diária.</td></tr>
+      <tr><td class="glabel edit">Razão da Cubagem - M3</td><td class="gval edit">${pGet('cubagem')}</td></tr>
+      <tr><td class="glabel">Reentrega - sob valor do frete original</td><td class="gval">${pct0(0.5)}</td></tr>
+      <tr><td class="glabel">Reentrega Valor Mínimo</td><td class="gval">${f2(83.10767432)}</td></tr>
+      <tr><td class="glabel nota" colspan="2">As taxas de TDE, TDA, TRT e EMEX serão cobradas integralmente nas reentregas.</td></tr>
+      <tr><td class="glabel">Devoução - sob valor de frete original</td><td class="gval">${pct0(1)}</td></tr>
       <tr><td class="glabel">ICMS/ISS: Conforme legislação local em vigor</td><td class="gval">—</td></tr>
     </table>
 
+    <table class="gen"><tr><th colspan="2">GENERALIDADES ESPECÍFICAS PARA EMPRESAS QUE ATUAM NA REGIÃO DO AMAZONAS (AC, AM, RO, RR, PA e AP)</th></tr>
+      <tr><td class="glabel">Seguro Fluvial origem/destino (cidades e regiões fluviais nos estados do AC, AM, AP, PA e RO) | Regiões de cobrança: ACFP / AMFP / APFP / PAFP / ROFP</td><td class="gval">${pct2(0.0012)}</td></tr>
+      <tr><td class="glabel">Seguro Fluvial Mínimo</td><td class="gval">${f2(11.1885262)}</td></tr>
+      <tr><td class="glabel">TRF - Taxa de Redespacho Fluvial origem/destino (cidades e regiões fluviais nos estados do AC, AM, AP, PA e RO) |Regiões de cobrança: ACFP / AMFP / APFP / PAFP / ROFP</td><td class="gval">${pct2(0)}</td></tr>
+      <tr><td class="glabel">TRF Mínimo</td><td class="gval">${f2(27.3505591)}</td></tr>
+      <tr><td class="glabel">SUFRAMA (Taxa de Adminsitração SUFRAMA para os estados do AC, AM, AP, RO e RR) - por ct-e</td><td class="gval">${f2(21.2422106)}</td></tr>
+    </table>
+
+    <table class="gen"><tr><th colspan="2">SERVIÇOS ADICIONAIS</th></tr>
+      <tr><td class="glabel">Taxa de Entrega | Regiões de cobrança: RJCP / SPCP</td><td class="gval">${f2(60)}</td></tr>
+      <tr><td class="glabel">Paletização - por pallet padrão PBR (nesse valor só consta o serviço, não inclui o pallet)</td><td class="gval">${f2(96.2)}</td></tr>
+      <tr><td class="glabel edit">Taxa de Agendamento</td><td class="gval edit">${pct0(pGet('taxa_agend'))}</td></tr>
+      <tr><td class="glabel edit">Valor Mínimo</td><td class="gval edit">${f2(pGet('agend_min'))}</td></tr>
+      <tr><td class="glabel">Devolução de Canhoto de Nf-e (por canhoto)</td><td class="gval">${f2(4.97)}</td></tr>
+      <tr><td class="glabel">Coletas aos Sábados, Domingos e Feriados - acréscimo sob valor do frete</td><td class="gval">${pct0(0.3)}</td></tr>
+      <tr><td class="glabel">Taxa de Escolta Armada - por veículo/hora (sob consulta)</td><td class="gval">—</td></tr>
+      <tr><td class="glabel" colspan="2" style="font-weight:bold;background:#F2F2F2">Entrega com Veículo Dedicado</td></tr>
+      <tr><td class="glabel nota" colspan="2">Sobre a cobrança de Veículos Dedicados: Caracteriza-se pela obrigatoriedade de envio de veículo com carga dedicada para destinatário</td></tr>
+      <tr><td class="glabel" rowspan="5">Veículo Dedicado (valor cobrado para veículos dedicados para realização de entrega com limite até às 20 hs) | Os valor acima são para entregas nas capitais e/ou, cidades onde temos unidades, demais cidades de interior o custo de deslocamento será acrescentado ao valor do veículo.</td><td class="gval sub" style="text-align:left;font-weight:normal">Veículo Leve (até 3.000 kg ou 10 m3): <strong style="float:right">${f2(777.93)}</strong></td></tr>
+      <tr><td class="gval sub" style="text-align:left;font-weight:normal">Toco (até 9.000 kg ou 30 m3): <strong style="float:right">${f2(942.487)}</strong></td></tr>
+      <tr><td class="gval sub" style="text-align:left;font-weight:normal">Truck: (até 12.000 kg ou 40 m3) <strong style="float:right">${f2(977.76)}</strong></td></tr>
+      <tr><td class="gval sub" style="text-align:left;font-weight:normal">Cavalo Mecânico + Carreta (até 27.000 kg ou 90 m3): <strong style="float:right">${f2(1663.158)}</strong></td></tr>
+      <tr><td class="gval sub" style="text-align:left;font-weight:normal">Carreta (até 27.000 kg ou 90 m3): <strong style="float:right">${f2(531.92)}</strong></td></tr>
+    </table>
+
     <table class="gen"><tr><th colspan="2">CONDIÇÕES GERAIS</th></tr>
-      <tr><td class="glabel">Faturamento</td><td class="gval" style="text-align:left;font-weight:normal">Semanal com prazo de 15 dias (faturamento bancário).</td></tr>
-      <tr><td class="glabel">Reajustes</td><td class="gval" style="text-align:left;font-weight:normal">Semestrais, vinculados ao índice DECOPE/NTC. Datas base: março e setembro.</td></tr>
-      <tr><td class="glabel">TEC - Taxa Emergencial Combustível</td><td class="gval" style="text-align:left;font-weight:normal">Reajustes de diesel acima de 5% acionam a TEC automaticamente, com aviso prévio de 2 dias úteis.</td></tr>
-      <tr><td class="glabel">Validade da Proposta</td><td class="gval" style="text-align:left;font-weight:normal">Após 60 dias sem movimentação a proposta será cancelada.</td></tr>
+      <tr><td class="glabel">Faturamento</td><td class="gval" style="text-align:left;font-weight:normal">Semanal com prazo de 15 dias (faturamento bancário).<br>Pagamentos em atrasos estarão sujeitos a multa de mora/dia e protestos após o 5º dia de vencido.</td></tr>
+      <tr><td class="glabel">Reajustes</td><td class="gval" style="text-align:left;font-weight:normal">Os reajustes de tarifas são semestrais e ocorrem de forma automática vinculados ao índice DECOPE/NTC.<br>Nossas datas bases são os meses de março e setembro.</td></tr>
+      <tr><td class="glabel">TEC - Taxa Emergencial Combustível</td><td class="gval" style="text-align:left;font-weight:normal">Para os casos de reajustes de diesel acima de 5% a TEC será acionada automaticamente com aviso prévio de 2 dias úteis.</td></tr>
+      <tr><td class="glabel">TEC - Taxa Emergencial Combustível Ativa</td><td class="gval" style="text-align:left;font-weight:normal">A tabela não contempla a TEC vigente atualmente, de 8,7% sobre o frete final, que será acrescida no cálculo final. Vigência: 18/03/2026.</td></tr>
+      <tr><td class="glabel">Validade da Proposta</td><td class="gval" style="text-align:left;font-weight:normal">Após período de 60 dias sem movimentação a proposta será cancelada.</td></tr>
+    </table>
+
+    <table class="gen"><tr><th colspan="2">DEMAIS CONSIDERAÇÕES</th></tr>
+      <tr><td class="glabel" colspan="2">1. Cargas que dependem de equipamento especial para carregamento, descarregamento ou transporte, deverão ser contratados/adquiridos pela empresa contratante ou previamente negociados com a transportadora.</td></tr>
+      <tr><td class="glabel" colspan="2">2. Cargas extradimencionadas acima de 2 metros e com peso unitário concentrado em 1 (um) volume acima de 80 kg poderá ser submetido a cobrança adicional em razão do veículo necessário para realizar a entrega e/ ou local de entrega.</td></tr>
+      <tr><td class="glabel" colspan="2">3. Ocasiões de força maior e/ ou fenômenos das natureza que gerem transtornos como interdições de rodovias, quebras de pontes que dificultem o acesso, serão cobradas taxas extras sem necessidade de prévio aceite, apenas um prévio aviso.</td></tr>
+      <tr><td class="glabel" colspan="2">4. Não vinculamos pagamentos das nossas faturas com a devolução dos comprovantes de entrega ou canhotos de Nf-e.</td></tr>
+      <tr><td class="glabel" colspan="2">5. A contratada não se responsabilizará por avarias causadas por embalagens inadequadas ao produto conforme avaliação do transportador, igualmente não se responsabiliza por transporte de produtos laqueados, vidros ou similares. Nos casos de devoluções, nos responsabilizaremos pela integridade do produto apenas quando a devolução/recusa se der no ato da entrega. Devoluções realizadas posteriormente ao momento da entrega, não terão indenizações por avarias e/ ou falta de itens internos.</td></tr>
+      <tr><td class="glabel" colspan="2">6. Destinatários que cobrarem pelo descarregamento, os custos serão repassados para a empresa contratante mais os impostos incidentes.</td></tr>
+      <tr><td class="glabel" colspan="2">7. Em caso de roubo ou sinistro, a transportadora apresentará cópias da apólice e pagamento. O ressarcimento ocorrerá pela seguradora conforme valores declarados na Nf-e no prazo de até 90 dias.</td></tr>
+      <tr><td class="glabel" colspan="2">8. As coletas deverão ser solicitadas por e-mail e serão realizadas no prazo de até 24 horas e dentro do horário comercial.</td></tr>
+      <tr><td class="glabel" colspan="2">9. Para embarcadores com perfil de coleta reversa que atingirem um percentual superior a 15% da sua expedição, será cobrada uma taxa extra de R$ 80,00 por cte-e emitido. E para coletas em destinatários de TDE, o percentual de TDE e valor mínimo será cobrado de forma integral.</td></tr>
+      <tr><td class="glabel" colspan="2">10. Para as recoletas, ocasionadas por motivo da carga não estar pronta por se coletada, será cobrado um valor adicional de 20% do valor do frete integral.</td></tr>
+      <tr><td class="glabel" colspan="2">11. Para entregas contratadas no modal rodoviário + redespacho áreo para entregas no arquipelágo de Fernando de Noronha, favor consultar valores ao seu comercial responsável.</td></tr>
+      <tr><td class="glabel" colspan="2">12. Os valores acordados são para entregas sempre no térreo de empresas e residências. Caso seja necessário entregar em andares superiores, principalmente com lances de escada, será cobrado um adicional de 20% do valor do frete com mínimo de R$ 280,00.</td></tr>
+      <tr><td class="glabel" colspan="2">13. Para os casos de reposições por falta e/ ou avarias, as mesmas deverão ser cobradas através de Nota de Débito contra a Atual Cargas.</td></tr>
+      <tr><td class="glabel" colspan="2">14. A nossa relação de cidades atendimdas e prazos de entrega estão sujeitas a mudanças em decorrência de mudança de rota ou mesmo por fenômenos da natureza que impactem em aumento de distância ou dificuldade de entrega em uma região de atendimento, portanto, é de responsabilidade do cliente a sua atualização frequente através de consulta que pode ser realizada através do seu representante comercial o mesmo por consulta na área do cliente em nosso site www.atualcargas.com.br</td></tr>
+      <tr><td class="glabel" colspan="2">15. Este acordo de frete substitui as demais negociações anteriores.</td></tr>
     </table>
 
     <div class="assinaturas">
