@@ -777,6 +777,8 @@ function gerarSugestoes(sol){
 
 // ════ STATE ════
 let CU=null,midSol=null,midSt=null,vData=[],vFile='',tabelasAprovadas={},tabelasAprovadasSugs={};
+// Controla se o Excel já foi gerado/revisado para a solicitação (com os ajustes atuais), liberando o botão de aprovação
+let _excelGeradoParaAprovar={};
 
 // ════ INIT ════
 async function init(){
@@ -1556,6 +1558,7 @@ function abrirTabela(solId){
   if(!sol)return;
   midSol=solId;
   _solAtual=sol;
+  _excelGeradoParaAprovar[solId]=false;
   const sugs=_gerarESalvar(sol);
   sugs.forEach(s=>{
     if(_ajustesAtivos[s.praca]===undefined){
@@ -1695,18 +1698,24 @@ function _renderTabela(solId, sol, sugs){
   }
   {
     const temCritico=criticos.length>0;
-    const labelBtn=jaAprovada?'✓ Atualizar & Gerar Excel':'✓ Aprovar & Gerar Excel';
+    const podeAprovar=!!_excelGeradoParaAprovar[solId];
+    const labelBtn=jaAprovada?'✓ Atualizar Aprovação':'✓ Aprovar Tabela';
+    let txtAprovacao;
+    if(temCritico) txtAprovacao='⚠️ Praças críticas — ajuste os sliders antes de aprovar';
+    else if(!podeAprovar) txtAprovacao='📊 Gere o Excel e analise a tabela antes de aprovar';
+    else txtAprovacao=(jaAprovada?'✦ Revisar e atualizar a aprovação da tabela?':'✦ Aprovar tabela com os ajustes configurados?');
     html+=`<div class="aprovacao-bar" style="${temCritico?'background:linear-gradient(90deg,#7F1D1D,#991B1B)':''}">
       <div>
-        <div class="aprovacao-txt">${temCritico?'⚠️ Praças críticas — ajuste os sliders antes de aprovar':(jaAprovada?'✦ Revisar e gerar uma nova versão da tabela?':'✦ Aprovar tabela com os ajustes configurados?')}</div>
-        <div class="aprovacao-sub">O Excel será gerado com os valores finais de cada slider. KG Pond. Ajustado: <strong id="kg-pond-bar">${kgPondAdj?'R$ '+f3(kgPondAdj)+'/kg':'—'}</strong></div>
+        <div class="aprovacao-txt">${txtAprovacao}</div>
+        <div class="aprovacao-sub">Gere o Excel para revisar os valores de cada slider antes de aprovar. KG Pond. Ajustado: <strong id="kg-pond-bar">${kgPondAdj?'R$ '+f3(kgPondAdj)+'/kg':'—'}</strong></div>
       </div>
       <div style="display:flex;gap:8px;flex-shrink:0;flex-wrap:wrap">
         <button class="btn btn-secondary btn-sm" onclick="resetSliders(${solId})">↺ Resetar</button>
         <button class="btn btn-danger btn-sm" onclick="remSolicitacao(${solId})">🗑️ Excluir Solicitação</button>
         <button class="btn btn-secondary btn-sm" onclick="closeModal('m-detalhe')">✕ Fechar</button>
         <button class="btn btn-blue btn-sm" onclick="_visualizarPDFAtual(${solId})">🖨️ Visualizar PDF</button>
-        <button class="btn btn-success" onclick="aprovarTabela(${solId})">${labelBtn}</button>
+        <button class="btn btn-purple btn-sm" onclick="gerarExcelPreview(${solId})">📥 Gerar Excel</button>
+        <button id="btn-aprovar-${solId}" class="btn btn-success" onclick="aprovarTabela(${solId})" ${podeAprovar?'':'disabled title="Gere o Excel antes de aprovar"'}>${labelBtn}</button>
       </div>
     </div>`;
   }
@@ -1764,6 +1773,15 @@ function onPctInput(praca, val){
   if(elSinal){elSinal.textContent=sinalGlobal;elSinal.className='sug-meta-val pond-val '+corGlobal;}
   const elBar=document.getElementById('kg-pond-bar');
   if(elBar)elBar.textContent=kgPondAdj?'R$ '+kgPondAdj.toFixed(3)+'/kg':'—';
+
+  // Qualquer alteração de slider invalida o Excel já gerado, exigindo nova geração antes de aprovar
+  if(_solAtual && _excelGeradoParaAprovar[_solAtual.id]){
+    _excelGeradoParaAprovar[_solAtual.id]=false;
+    const btnAprovar=document.getElementById('btn-aprovar-'+_solAtual.id);
+    if(btnAprovar){btnAprovar.disabled=true;btnAprovar.title='Gere o Excel antes de aprovar';}
+    const elTxt=document.querySelector('.aprovacao-txt');
+    if(elTxt) elTxt.textContent='📊 Gere o Excel e analise a tabela antes de aprovar';
+  }
 }
 
 // Cache de sugestões para o slider
@@ -1782,9 +1800,38 @@ function resetSliders(solId){
   if(sol){const sugs=_gerarESalvar(sol);_renderTabela(solId,sol,sugs);}
 }
 
+// Gera o Excel para o ADM revisar/analisar os valores antes de aprovar a tabela.
+// Não altera o status da solicitação nem libera o download para o vendedor.
+async function gerarExcelPreview(solId){
+  const sol=(window._sols||[]).find(s=>s.id===solId);
+  if(!sol)return;
+  const sugsBase=Object.values(_sugsCached);
+  const sugsFinais=sugsBase.map(s=>{
+    const pct=_ajustesAtivos[s.praca]||0;
+    const adj=aplicarAjuste(s,pct);
+    return{...s,_pct:pct,sug:{...s.sug,...adj}};
+  });
+  showToast('⏳ Gerando Excel para análise...');
+  const ok=await gerarExcel(sol,sugsFinais);
+  if(ok){
+    _excelGeradoParaAprovar[solId]=true;
+    const btnAprovar=document.getElementById('btn-aprovar-'+solId);
+    if(btnAprovar){btnAprovar.disabled=false;btnAprovar.removeAttribute('title');}
+    const elTxt=document.querySelector('.aprovacao-txt');
+    if(elTxt) elTxt.textContent=(!!tabelasAprovadas[solId])?'✦ Revisar e atualizar a aprovação da tabela?':'✦ Aprovar tabela com os ajustes configurados?';
+    showToast('✅ Excel gerado — revise e depois clique em Aprovar Tabela.');
+  }
+}
+
+// Aprova a tabela (libera para o vendedor) usando os valores já revisados no Excel gerado.
+// Só pode ser executada após o Excel ter sido gerado com os ajustes atuais.
 async function aprovarTabela(solId){
   const sol=(window._sols||[]).find(s=>s.id===solId);
   if(!sol)return;
+  if(!_excelGeradoParaAprovar[solId]){
+    showToast('⚠️ Gere o Excel e analise a tabela antes de aprovar.');
+    return;
+  }
   const jaEstavaAprovada=!!tabelasAprovadas[solId];
   const sugsBase=Object.values(_sugsCached);
   const sugsFinais=sugsBase.map(s=>{
@@ -1792,8 +1839,6 @@ async function aprovarTabela(solId){
     const adj=aplicarAjuste(s,pct);
     return{...s,_pct:pct,sug:{...s.sug,...adj}};
   });
-  showToast('⏳ Gerando Excel e abrindo PDF para impressão...');
-  await gerarExcel(sol,sugsFinais);
   tabelasAprovadas[solId]=true;
   tabelasAprovadasSugs[solId]=sugsFinais;
 
