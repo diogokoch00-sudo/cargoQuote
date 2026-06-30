@@ -1998,31 +1998,31 @@ async function gerarPDF(sol, sugs){
     const printHtml=`<!DOCTYPE html><html><head><meta charset="UTF-8">
     <title>Tabela_${(c.razao||'tabela').replace(/[^a-zA-Z0-9]/g,'_')}</title>
     <style>
-      @page{size:A4 landscape;margin:8mm;}
+      @page{size:A4 portrait;margin:6mm;}
       *{box-sizing:border-box;margin:0;padding:0;}
-      body{font-family:Arial,sans-serif;font-size:8px;color:#000;}
-      .logo-area{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;}
-      .logo-area img{height:32px;}
-      .data-tag{font-size:10px;font-weight:bold;}
-      table.dados{width:100%;border-collapse:collapse;margin-bottom:4px;font-size:8px;}
-      table.dados td{border:1px solid #000;padding:2px 5px;}
-      table.dados td.label{font-weight:bold;background:#F2F2F2;width:90px;}
-      .titulo-frete{background:#9CA3AF;color:#000;text-align:center;font-weight:bold;font-size:9px;padding:3px;border:1px solid #000;}
-      table.frete{width:100%;border-collapse:collapse;font-size:7px;}
-      table.frete th{background:#1B4F8A;color:#fff;border:1px solid #000;padding:2px;text-align:center;font-size:7px;}
-      table.frete td{border:1px solid #000;padding:1.5px 3px;text-align:center;}
+      body{font-family:Arial,sans-serif;font-size:7px;color:#000;}
+      .logo-area{display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;}
+      .logo-area img{height:28px;}
+      .data-tag{font-size:9px;font-weight:bold;}
+      table.dados{width:100%;border-collapse:collapse;margin-bottom:4px;font-size:7px;}
+      table.dados td{border:1px solid #000;padding:1.5px 4px;}
+      table.dados td.label{font-weight:bold;background:#F2F2F2;width:70px;}
+      .titulo-frete{background:#9CA3AF;color:#000;text-align:center;font-weight:bold;font-size:8px;padding:2px;border:1px solid #000;}
+      table.frete{width:100%;border-collapse:collapse;font-size:5.5px;}
+      table.frete th{background:#1B4F8A;color:#fff;border:1px solid #000;padding:1.5px 1px;text-align:center;font-size:5.5px;}
+      table.frete td{border:1px solid #000;padding:1px 2px;text-align:center;}
       table.frete td.reg-cell,table.frete td.uf-cell{font-weight:bold;background:#F8F8F8;}
       table.frete td.cidade-cell{text-align:left;}
       table.frete td.praca-cell{font-weight:bold;}
       table.frete tr:nth-child(even) td:not(.reg-cell):not(.uf-cell){background:#FBFBFB;}
       .pagebreak{page-break-before:always;}
-      table.gen{width:100%;border-collapse:collapse;font-size:7px;margin-bottom:5px;}
-      table.gen th{background:#1B4F8A;color:#fff;padding:3px;text-align:center;font-size:8px;}
-      table.gen td{border:1px solid #999;padding:1.5px 5px;}
+      table.gen{width:100%;border-collapse:collapse;font-size:6.5px;margin-bottom:4px;}
+      table.gen th{background:#1B4F8A;color:#fff;padding:2px;text-align:center;font-size:7px;}
+      table.gen td{border:1px solid #999;padding:1px 4px;}
       table.gen td.glabel{width:75%;}
       table.gen td.gval{text-align:right;font-weight:bold;width:25%;}
       table.gen td.edit{background:#FFF6B3;}
-      table.gen td.nota{font-style:italic;color:#444;font-weight:normal;text-align:left;font-size:6.5px;}
+      table.gen td.nota{font-style:italic;color:#444;font-weight:normal;text-align:left;font-size:6px;}
       table.gen td.sub{padding-left:14px;}
       .assinaturas{display:flex;justify-content:space-around;margin-top:30px;font-size:9px;}
       .assinaturas div{text-align:center;width:200px;border-top:1px solid #000;padding-top:4px;}
